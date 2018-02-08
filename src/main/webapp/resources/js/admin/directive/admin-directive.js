@@ -460,8 +460,8 @@
                 		alert('Your image not uploaded correctly.Please upload the image again');
 	                } else if (!((files[0].type == 'image/png') || (files[0].type == 'image/jpeg'))) {
 	                	alert('only png or jpeg files are accepted');
-	                } else if (files[0].size > 1024000) {
-	                	alert('Image size exceeds the allowable limit 1MB');
+	                } else if (files[0].size > 10240000) {
+	                	alert('Image size exceeds the allowable limit 10MB');
 	                } else {
 	                	reader.readAsDataURL(files[0]);
 	                }
