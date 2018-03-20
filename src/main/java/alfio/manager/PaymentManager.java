@@ -82,19 +82,21 @@ public class PaymentManager {
                                        CustomerName customerName,
                                        String billingAddress) {
         try {
-            final Charge charge = stripeManager.chargeCreditCard(gatewayToken, price,
+            final Optional<Charge> optionalCharge = stripeManager.chargeCreditCard(gatewayToken, price,
                     event, reservationId, email, customerName.getFullName(), billingAddress);
-            log.info("transaction {} paid: {}", reservationId, charge.getPaid());
-            Pair<Long, Long> fees = Optional.ofNullable(charge.getBalanceTransactionObject()).map(bt -> {
-                List<Fee> feeDetails = bt.getFeeDetails();
-                return Pair.of(Optional.ofNullable(StripeManager.getFeeAmount(feeDetails, "application_fee")).map(Long::parseLong).orElse(0L),
-                               Optional.ofNullable(StripeManager.getFeeAmount(feeDetails, "stripe_fee")).map(Long::parseLong).orElse(0L));
-            }).orElse(null);
+            return optionalCharge.map(charge -> {
+                log.info("transaction {} paid: {}", reservationId, charge.getPaid());
+                Pair<Long, Long> fees = Optional.ofNullable(charge.getBalanceTransactionObject()).map(bt -> {
+                    List<Fee> feeDetails = bt.getFeeDetails();
+                    return Pair.of(Optional.ofNullable(StripeManager.getFeeAmount(feeDetails, "application_fee")).map(Long::parseLong).orElse(0L),
+                                   Optional.ofNullable(StripeManager.getFeeAmount(feeDetails, "stripe_fee")).map(Long::parseLong).orElse(0L));
+                }).orElse(null);
 
-            transactionRepository.insert(charge.getId(), null, reservationId,
-                    ZonedDateTime.now(), price, event.getCurrency(), charge.getDescription(), PaymentProxy.STRIPE.name(),
-                    fees != null ? fees.getLeft() : 0L, fees != null ? fees.getRight() : 0L);
-            return PaymentResult.successful(charge.getId());
+                transactionRepository.insert(charge.getId(), null, reservationId,
+                        ZonedDateTime.now(), price, event.getCurrency(), charge.getDescription(), PaymentProxy.STRIPE.name(),
+                        fees != null ? fees.getLeft() : 0L, fees != null ? fees.getRight() : 0L);
+                return PaymentResult.successful(charge.getId());
+            }).orElseGet(() -> PaymentResult.unsuccessful("error.STEP2_UNABLE_TO_TRANSITION"));
         } catch (Exception e) {
             if(e instanceof StripeException) {
                 return PaymentResult.unsuccessful(stripeManager.handleException((StripeException)e));
@@ -154,8 +156,11 @@ public class PaymentManager {
         return stripeManager.getPublicKey(event);
     }
 
-    public String createPaypalCheckoutRequest(Event event, String reservationId, OrderSummary orderSummary, CustomerName customerName, String email, String billingAddress, Locale locale, boolean postponeAssignment) throws Exception {
-        return paypalManager.createCheckoutRequest(event, reservationId, orderSummary, customerName, email, billingAddress, locale, postponeAssignment);
+    public String createPayPalCheckoutRequest(Event event, String reservationId, OrderSummary orderSummary,
+                                              CustomerName customerName, String email, String billingAddress,
+                                              Locale locale, boolean postponeAssignment, boolean invoiceRequested) throws Exception {
+        return paypalManager.createCheckoutRequest(event, reservationId, orderSummary, customerName, email,
+                                                   billingAddress, locale, postponeAssignment, invoiceRequested);
     }
 
     public boolean refund(TicketReservation reservation, Event event, Optional<Integer> amount, String username) {

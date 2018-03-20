@@ -33,7 +33,6 @@ import alfio.model.TicketReservation.TicketReservationStatus;
 import alfio.model.decorator.AdditionalServiceItemPriceContainer;
 import alfio.model.decorator.AdditionalServicePriceContainer;
 import alfio.model.decorator.TicketPriceContainer;
-import alfio.model.extension.InvoiceGeneration;
 import alfio.model.modification.ASReservationWithOptionalCodeModification;
 import alfio.model.modification.AdditionalServiceReservationModification;
 import alfio.model.modification.TicketReservationWithOptionalCodeModification;
@@ -597,7 +596,7 @@ public class TicketReservationManager {
     }
 
     private void reTransitionToPending(String reservationId) {
-        int updatedReservation = ticketReservationRepository.updateTicketStatus(reservationId, TicketReservationStatus.PENDING.toString());
+        int updatedReservation = ticketReservationRepository.updateReservationStatus(reservationId, TicketReservationStatus.PENDING.toString());
         Validate.isTrue(updatedReservation == 1, "expected exactly one updated reservation, got "+updatedReservation);
     }
     
@@ -740,7 +739,7 @@ public class TicketReservationManager {
     public void markExpiredInPaymentReservationAsStuck(Date expirationDate) {
         List<String> stuckReservations = ticketReservationRepository.findStuckReservations(expirationDate);
         if(!stuckReservations.isEmpty()) {
-            ticketReservationRepository.updateTicketStatus(stuckReservations, TicketReservationStatus.STUCK.name());
+            ticketReservationRepository.updateReservationsStatus(stuckReservations, TicketReservationStatus.STUCK.name());
 
             Map<Integer, List<ReservationIdAndEventId>> reservationsGroupedByEvent = ticketReservationRepository
                 .getReservationIdAndEventId(stuckReservations)
@@ -863,7 +862,8 @@ public class TicketReservationManager {
                 List<AdditionalServiceItemPriceContainer> prices = generateASIPriceContainers(event, null).apply(entry).collect(toList());
                 AdditionalServiceItemPriceContainer first = prices.get(0);
                 final int subtotal = prices.stream().mapToInt(AdditionalServiceItemPriceContainer::getSrcPriceCts).sum();
-                return new SummaryRow(title.getValue(), formatCents(first.getSrcPriceCts()), formatCents(first.getSrcPriceCts()), prices.size(), formatCents(subtotal), formatCents(subtotal), subtotal, SummaryRow.SummaryType.ADDITIONAL_SERVICE);
+                final int subtotalBeforeVat = prices.stream().mapToInt(AdditionalServiceItemPriceContainer::getSummaryPriceBeforeVatCts).sum();
+                return new SummaryRow(title.getValue(), formatCents(first.getSrcPriceCts()), formatCents(first.getSummaryPriceBeforeVatCts()), prices.size(), formatCents(subtotal), formatCents(subtotalBeforeVat), subtotal, SummaryRow.SummaryType.ADDITIONAL_SERVICE);
             }).collect(Collectors.toList()));
 
         Optional.ofNullable(promoCodeDiscount).ifPresent(promo -> {
@@ -1054,6 +1054,7 @@ public class TicketReservationManager {
             ticketReservationRepository.updateAssignee(reservation.getId(), username);
         }
         pluginManager.handleTicketAssignment(newTicket);
+        extensionManager.handleTicketAssignment(newTicket);
 
 
 
@@ -1285,7 +1286,7 @@ public class TicketReservationManager {
         return ticketRepository.countFreeTicketsForUnbounded(event.getId());
     }
 
-    public void releaseTicket(Event event, TicketReservation ticketReservation, Ticket ticket) {
+    public void releaseTicket(Event event, TicketReservation ticketReservation, final Ticket ticket) {
         TicketCategory category = ticketCategoryRepository.getByIdAndActive(ticket.getCategoryId(), event.getId());
         if(!CategoryEvaluator.isTicketCancellationAvailable(ticketCategoryRepository, ticket)) {
             throw new IllegalStateException("Cannot release reserved tickets");
@@ -1320,6 +1321,8 @@ public class TicketReservationManager {
         if(ticketRepository.countTicketsInReservation(reservationId) == 0 && !transactionRepository.loadOptionalByReservationId(reservationId).isPresent()) {
             deleteReservation(event, reservationId, false);
             auditingRepository.insert(reservationId, null, event.getId(), Audit.EventType.CANCEL_RESERVATION, new Date(), Audit.EntityType.RESERVATION, reservationId);
+        } else {
+            extensionManager.handleTicketCancelledForEvent(event, Collections.singletonList(ticket.getUuid()));
         }
     }
 

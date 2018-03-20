@@ -17,6 +17,7 @@
 package alfio.model;
 
 import ch.digitalfondue.npjt.ConstructorAnnotationRowMapper.Column;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 @Getter
@@ -61,9 +62,28 @@ public class ExtensionSupport {
     }
 
     @Getter
+    public static class ExtensionParameterKeyValue {
+        private final String name;
+        private final String configurationLevel;
+        private final String configurationPath;
+        private final String configurationValue;
+
+        public ExtensionParameterKeyValue(@Column("ecm_name") String name,
+                                          @Column("ecm_configuration_level") String configurationLevel,
+                                          @Column("conf_path") String configurationPath,
+                                          @Column("conf_value") String configurationValue) {
+            this.name = name;
+            this.configurationLevel = configurationLevel;
+            this.configurationPath = configurationPath;
+            this.configurationValue = configurationValue;
+        }
+    }
+
+    @Getter
     public static class ExtensionParameterMetadataAndValue {
         private final int id;
         private final String name;
+        private final String extensionDisplayName;
         private final String configurationLevel;
         private final String description;
         private final String type;
@@ -84,6 +104,7 @@ public class ExtensionSupport {
                                                   @Column("path") String path,
                                                   @Column("es_id") int extensionId,
                                                   @Column("name") String extensionName,
+                                                  @Column("display_name") String extensionDisplayName,
                                                   @Column("conf_path") String configurationPath,
                                                   @Column("conf_value") String configurationValue) {
             this.id = id;
@@ -95,8 +116,42 @@ public class ExtensionSupport {
             this.path = path;
             this.extensionId = extensionId;
             this.extensionName = extensionName;
+            this.extensionDisplayName = extensionDisplayName;
             this.configurationPath = configurationPath;
             this.configurationValue = configurationValue;
+        }
+
+        //for compatibility
+        public String getComponentType() {
+            return type;
+        }
+
+        public String getValue() {
+            return configurationValue;
+        }
+
+        public String getConfigurationPathLevel() {
+            return configurationLevel;
+        }
+    }
+
+    @AllArgsConstructor
+    @Getter
+    public static class ExtensionMetadataValue {
+        private final int id;
+        private final String value;
+    }
+
+
+    @Getter
+    public static class NameAndValue {
+        private final String name;
+        private final String value;
+
+        public NameAndValue(@Column("ecm_name") String name,
+                            @Column("conf_value") String value) {
+            this.name = name;
+            this.value = value;
         }
     }
 }

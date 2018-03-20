@@ -294,7 +294,7 @@
 
 
         function disableBillingFields() {
-            $('#vatNr,#vatCountryCode,#billing-address[data-invoice-enabled]').attr('required', false).attr('disabled', '');
+            $('#vatNr,#vatCountryCode').attr('required', false).attr('disabled', '');
         }
 
         disableBillingFields();
@@ -313,6 +313,7 @@
                 }
             } else {
                 element.find('.field-required').attr('required', false);
+                $('#billing-address').attr('required', false,).attr('disabled');
                 element.addClass('hidden');
                 disableBillingFields();
             }

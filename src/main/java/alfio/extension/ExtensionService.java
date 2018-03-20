@@ -17,14 +17,17 @@
 
 package alfio.extension;
 
+import alfio.model.Event;
 import alfio.model.ExtensionLog;
 import alfio.model.ExtensionSupport;
-import alfio.model.ExtensionSupport.ScriptPathNameHash;
+import alfio.model.ExtensionSupport.*;
+import alfio.model.user.Organization;
 import alfio.repository.ExtensionLogRepository;
 import alfio.repository.ExtensionRepository;
 import lombok.AllArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.Validate;
 import org.apache.commons.lang3.tuple.Pair;
 import org.springframework.stereotype.Service;
@@ -36,6 +39,7 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @Log4j2
@@ -49,6 +53,7 @@ public class ExtensionService {
     private final ExtensionLogRepository extensionLogRepository;
 
     private final PlatformTransactionManager platformTransactionManager;
+
 
     @AllArgsConstructor
     private static final class ExtensionLoggerImpl implements ExtensionLogger {
@@ -105,14 +110,15 @@ public class ExtensionService {
         String hash = DigestUtils.sha256Hex(script.getScript());
         ExtensionMetadata extensionMetadata = getMetadata(script.getName(), script.getScript());
 
+        Validate.notBlank(extensionMetadata.displayName, "Display Name is mandatory");
+
         extensionRepository.deleteEventsForPath(previousPath, previousName);
 
         if (!Objects.equals(previousPath, script.getPath()) || !Objects.equals(previousName, script.getName())) {
             extensionRepository.deleteScriptForPath(previousPath, previousName);
-            extensionRepository.insert(script.getPath(), script.getName(), hash, script.isEnabled(), extensionMetadata.async, script.getScript());
+            extensionRepository.insert(script.getPath(), script.getName(), extensionMetadata.displayName, hash, script.isEnabled(), extensionMetadata.async, script.getScript());
         } else {
-            extensionRepository.update(script.getPath(), script.getName(), hash, script.isEnabled(), extensionMetadata.async, script.getScript());
-            //TODO: load all saved parameters value, then delete the register extension parameter
+            extensionRepository.update(script.getPath(), script.getName(), extensionMetadata.displayName, hash, script.isEnabled(), extensionMetadata.async, script.getScript());
         }
 
         int extensionId = extensionRepository.getExtensionIdFor(script.getPath(), script.getName());
@@ -125,19 +131,56 @@ public class ExtensionService {
         //
         ExtensionMetadata.Parameters parameters = extensionMetadata.getParameters();
         if (parameters != null) {
+            List<ExtensionParameterKeyValue> extensionParameterKeyValue = extensionRepository.findExtensionParameterKeyValue(extensionId);
             extensionRepository.deleteExtensionParameter(extensionId);
-            //TODO: handle if already present, cleanup key that are no more present
             for (ExtensionMetadata.Field field : parameters.getFields()) {
                 for (String level : parameters.getConfigurationLevels()) {
-                    extensionRepository.registerExtensionConfigurationMetadata(extensionId, field.getName(), field.getDescription(), field.getType(), level, field.isRequired());
-                    //if for this key,level is present a value -> save
+                    int confFieldId = extensionRepository.registerExtensionConfigurationMetadata(extensionId, field.getName(), field.getDescription(), field.getType(), level, field.isRequired()).getKey();
+                    List<ExtensionParameterKeyValue> filteredParam = extensionParameterKeyValue.stream().filter(kv -> field.getName().equals(kv.getName()) && level.equals(kv.getConfigurationLevel())).collect(Collectors.toList());
+                    for(ExtensionParameterKeyValue kv : filteredParam) {
+                        //TODO: can be optimized with a bulk insert...
+                        extensionRepository.insertSettingValue(confFieldId, kv.getConfigurationPath(), kv.getConfigurationValue());
+                    }
                 }
             }
         }
     }
 
-    public List<ExtensionSupport.ExtensionParameterMetadataAndValue> getConfigurationParametersFor(String basePath, String pathPattern, String configurationLevel) {
+    public List<ExtensionParameterMetadataAndValue> getConfigurationParametersFor(String basePath, String pathPattern, String configurationLevel) {
         return extensionRepository.getParametersForLevelAndPath(configurationLevel, generatePossiblePath(basePath), pathPattern);
+    }
+
+    @Transactional
+    public void bulkUpdateSystemSettings(List<ExtensionMetadataValue> toUpdate) {
+        deleteAndInsertSetting("SYSTEM", "-", toUpdate);
+    }
+
+    @Transactional
+    public void bulkUpdateOrganizationSettings(Organization org, List<ExtensionMetadataValue> toUpdate) {
+        String path = "-" + org.getId();
+        deleteAndInsertSetting("ORGANIZATION", path, toUpdate);
+    }
+
+    @Transactional
+    public void bulkUpdateEventSettings(Organization org, Event event, List<ExtensionMetadataValue> toUpdate) {
+        String path = "-" + org.getId() + "-" + event.getId();
+        deleteAndInsertSetting("EVENT", path, toUpdate);
+    }
+
+    @Transactional
+    public void deleteSettingValue(int id, String path) {
+        extensionRepository.deleteSettingValue(id, path);
+    }
+
+    private void deleteAndInsertSetting(String level, String path, List<ExtensionMetadataValue> toUpdate) {
+        extensionRepository.deleteSettingValue(level, path);
+        List<ExtensionMetadataValue> toUpdate2 = (toUpdate == null ? Collections.emptyList() : toUpdate);
+        List<ExtensionMetadataValue> filtered = toUpdate2.stream()
+            .filter(f -> StringUtils.trimToNull(f.getValue()) != null)
+            .collect(Collectors.toList());
+        for (ExtensionMetadataValue v : filtered) {
+            extensionRepository.insertSettingValue(v.getId(), path, v.getValue());
+        }
     }
 
     @Transactional
@@ -169,10 +212,17 @@ public class ExtensionService {
         for (ScriptPathNameHash activePath : activePaths) {
             String path = activePath.getPath();
             String name = activePath.getName();
-            res = scriptingExecutionService.executeScript(name, activePath.getHash(),
-                () -> getScript(path, name)+"\n;GSON.fromJson(JSON.stringify(executeScript(extensionEvent)), returnClass);", input, clazz,
-                new ExtensionLoggerImpl(extensionLogRepository, platformTransactionManager, basePath, path, name));
-            input.put("output", res);
+            Pair<Set<String>, Map<String, Object>> params = addExtensionParameters(input, basePath, activePath);
+            input = params.getRight();
+            ExtensionLogger extLogger = new ExtensionLoggerImpl(extensionLogRepository, platformTransactionManager, basePath, path, name);
+
+            if(params.getLeft().isEmpty()) {
+                res = scriptingExecutionService.executeScript(name, activePath.getHash(),
+                    () -> getScript(path, name)+"\n;GSON.fromJson(JSON.stringify(executeScript(extensionEvent)), returnClass);", input, clazz, extLogger);
+                input.put("output", res);
+            } else {
+                extLogger.logInfo("script not run, missing parameters: " + params.getLeft());
+            }
         }
         return res;
     }
@@ -184,9 +234,33 @@ public class ExtensionService {
         for (ScriptPathNameHash activePath : activePaths) {
             String path = activePath.getPath();
             String name = activePath.getName();
-            scriptingExecutionService.executeScriptAsync(path, name, activePath.getHash(), () -> getScript(path, name)+"\n;executeScript(extensionEvent);", input,
-                new ExtensionLoggerImpl(extensionLogRepository, platformTransactionManager, basePath, path, name));
+            Pair<Set<String>, Map<String, Object>> params = addExtensionParameters(input, basePath, activePath);
+            input = params.getRight();
+            ExtensionLogger extLogger = new ExtensionLoggerImpl(extensionLogRepository, platformTransactionManager, basePath, path, name);
+
+            if(params.getLeft().isEmpty()) {
+                scriptingExecutionService.executeScriptAsync(path, name, activePath.getHash(), () -> getScript(path, name)+"\n;executeScript(extensionEvent);", input, extLogger);
+            } else {
+                extLogger.logInfo("script not run, missing parameters: " + params.getLeft());
+            }
         }
+    }
+
+    /*
+    * Return a copy of the input with added parameters and a set of missing mandatory parameters, if any
+    * */
+    private Pair<Set<String>, Map<String,Object>> addExtensionParameters(Map<String, Object> input, String basePath, ScriptPathNameHash activePath) {
+        Map<String, Object> copy = new HashMap<>(input);
+        Map<String, String> nameAndValues = extensionRepository.findParametersForScript(activePath.getName(), activePath.getPath(), generatePossiblePath(basePath))
+            .stream()
+            .collect(Collectors.toMap(NameAndValue::getName, NameAndValue::getValue));
+
+        Set<String> mandatory = new HashSet<>(extensionRepository.findMandatoryParametersForScript(activePath.getName(), activePath.getPath()));
+
+        mandatory.removeAll(nameAndValues.keySet());
+
+        copy.put("extensionParameters", nameAndValues);
+        return Pair.of(mandatory, copy);
     }
 
     private List<ScriptPathNameHash> getActiveScriptsForEvent(String event, String basePath, boolean async) {

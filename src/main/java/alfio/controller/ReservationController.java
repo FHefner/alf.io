@@ -101,6 +101,7 @@ public class ReservationController {
                                   @RequestParam(value = "billingAddress", required = false) String billingAddress,
                                   @RequestParam(value = "hmac", required = false) String hmac,
                                   @RequestParam(value = "postponeAssignment", required = false) Boolean postponeAssignment,
+                                  @RequestParam(value = "invoiceRequested", required = false) Boolean invoiceRequested,
                                   Model model,
                                   Locale locale) {
 
@@ -124,6 +125,7 @@ public class ReservationController {
                             .addAttribute("billingAddress", billingAddress)
                             .addAttribute("hmac", hmac)
                             .addAttribute("postponeAssignment", Boolean.TRUE.equals(postponeAssignment))
+                            .addAttribute("invoiceRequested", Boolean.TRUE.equals(invoiceRequested))
                             .addAttribute("showPostpone", Boolean.TRUE.equals(postponeAssignment));
                     } else {
                         model.addAttribute("paypalCheckoutConfirmation", false)
@@ -154,8 +156,8 @@ public class ReservationController {
                             .addAttribute("captchaRequestedFreeOfCharge", orderSummary.getFree() && captchaForOfflinePaymentEnabled);
                     }
 
-                    boolean invoiceAllowed = orderSummary.getDisplayVat()
-                        && (configurationManager.hasAllConfigurationsForInvoice(event) || vatChecker.isVatCheckingEnabledFor(event.getOrganizationId()));
+                    boolean invoiceAllowed = configurationManager.hasAllConfigurationsForInvoice(event) || vatChecker.isVatCheckingEnabledFor(event.getOrganizationId());
+                    PaymentForm paymentForm = PaymentForm.fromExistingReservation(reservation);
                     model.addAttribute("multiplePaymentMethods" , activePaymentMethods.size() > 1 )
                         .addAttribute("orderSummary", orderSummary)
                         .addAttribute("reservationId", reservationId)
@@ -169,6 +171,7 @@ public class ReservationController {
                         .addAttribute("euCountries", TicketHelper.getLocalizedEUCountries(locale, configurationManager.getRequiredValue(getSystemConfiguration(ConfigurationKeys.EU_COUNTRIES_LIST))))
                         .addAttribute("euVatCheckingEnabled", vatChecker.isVatCheckingEnabledFor(event.getOrganizationId()))
                         .addAttribute("invoiceIsAllowed", invoiceAllowed)
+                        .addAttribute("vatNrIsLinked", orderSummary.isVatExempt() || paymentForm.getHasVatCountryCode())
                         .addAttribute("billingAddressLabel", invoiceAllowed ? "reservation-page.billing-address" : "reservation-page.receipt-address");
 
                     boolean includeStripe = !orderSummary.getFree() && activePaymentMethods.contains(PaymentProxy.STRIPE);
@@ -177,7 +180,7 @@ public class ReservationController {
                         model.addAttribute("stripe_p_key", paymentManager.getStripePublicKey(event));
                     }
                     Map<String, Object> modelMap = model.asMap();
-                    modelMap.putIfAbsent("paymentForm", PaymentForm.fromExistingReservation(reservation));
+                    modelMap.putIfAbsent("paymentForm", paymentForm);
                     modelMap.putIfAbsent("hasErrors", false);
 
                     boolean hasPaidSupplement = ticketReservationManager.hasPaidSupplements(reservationId);
@@ -434,8 +437,9 @@ public class ReservationController {
         if(paymentForm.getPaymentMethod() == PaymentProxy.PAYPAL && !paymentForm.hasPaypalTokens()) {
             OrderSummary orderSummary = ticketReservationManager.orderSummaryForReservationId(reservationId, event, locale);
             try {
-                String checkoutUrl = paymentManager.createPaypalCheckoutRequest(event, reservationId, orderSummary, customerName,
-                    paymentForm.getEmail(), paymentForm.getBillingAddress(), locale, paymentForm.isPostponeAssignment());
+                String checkoutUrl = paymentManager.createPayPalCheckoutRequest(event, reservationId, orderSummary, customerName,
+                    paymentForm.getEmail(), paymentForm.getBillingAddress(), locale, paymentForm.isPostponeAssignment(),
+                    paymentForm.isInvoiceRequested());
                 assignTickets(eventName, reservationId, paymentForm, bindingResult, request, true);
                 return "redirect:" + checkoutUrl;
             } catch (Exception e) {

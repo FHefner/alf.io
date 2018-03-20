@@ -119,6 +119,7 @@
         <input type="hidden" name="paypalPaymentId" value="{{paypalPaymentId}}">
         <input type="hidden" name="paypalPayerID" value="{{paypalPayerID}}">
         <input type="hidden" name="termAndConditionsAccepted" value="true">
+        <input type="hidden" name="invoiceRequested" value="{{invoiceRequested}}">
     <div class="alert alert-success">
         <h3><i class="fa fa-check"></i> {{#i18n}}reservation-page.paypal.confirm{{/i18n}}</h3>
     </div>
@@ -247,17 +248,24 @@
         {{/activePaymentMethods}}
 
     {{#invoiceIsAllowed}}
-        <div class="checkbox wMarginTop">
-            <label>
-                <input type="checkbox" name="invoiceRequested" id="invoice-requested" value="true" {{#paymentForm.invoiceRequested}}checked{{/paymentForm.invoiceRequested}}>
-                {{#i18n}}reservation-page.i-need-an-invoice{{/i18n}}
-            </label>
-        </div>
+        {{^vatNrIsLinked}}
+            <div class="checkbox wMarginTop">
+                <label>
+                    <input type="checkbox" name="invoiceRequested" id="invoice-requested" value="true" {{#paymentForm.invoiceRequested}}checked{{/paymentForm.invoiceRequested}}>
+                    {{#i18n}}reservation-page.i-need-an-invoice{{/i18n}}
+                </label>
+            </div>
+        {{/vatNrIsLinked}}
+        {{#vatNrIsLinked}}
+            <div class="page-header wMarginTop">
+                <h2>{{#i18n}}invoice.title{{/i18n}}</h2>
+            </div>
+        {{/vatNrIsLinked}}
     {{/invoiceIsAllowed}}
 
     <div id="invoice" class="wMarginTop {{#invoiceIsAllowed}}{{^paymentForm.invoiceRequested}}hidden{{/paymentForm.invoiceRequested}}{{/invoiceIsAllowed}}">
         {{#euVatCheckingEnabled}}
-            {{#orderSummary.displayVat}}
+            {{^vatNrIsLinked}}
                 <div class="row">
                     <div class="col-xs-12 col-sm-4">
                         <div class="form-group">
@@ -292,12 +300,12 @@
                               data-validation-required-msg="{{#i18n}}reservation-page.vat-validation-required{{/i18n}}"></span>
                     </div>
                 </div>
-            {{/orderSummary.displayVat}}
+            {{/vatNrIsLinked}}
             <div class="clearfix"></div>
         {{/euVatCheckingEnabled}}
 
         <div class="row">
-            {{^orderSummary.displayVat}}
+            {{#vatNrIsLinked}}
                 <input type="hidden" name="vatCountryCode" value="{{paymentForm.vatCountryCode}}">
                 <input type="hidden" name="vatNr" value="{{paymentForm.vatNr}}"/>
                 <input type="hidden" name="invoiceRequested" value="true">
@@ -313,8 +321,8 @@
                         <p class="form-control-static">{{paymentForm.vatNr}}</p>
                     </div>
                 </div>
-            {{/orderSummary.displayVat}}
-            <div class="col-xs-12 {{^orderSummary.displayVat}}col-md-8{{/orderSummary.displayVat}}">
+            {{/vatNrIsLinked}}
+            <div class="col-xs-12 {{#vatNrIsLinked}}col-md-8{{/vatNrIsLinked}}">
                 <div class="form-group {{#field-has-error}}[billingAddress] has-error{{/field-has-error}}" id="billing-address-container">
                     <label for="billing-address" class="control-label">{{#i18n}}{{billingAddressLabel}}{{/i18n}}</label>
                     <textarea name="billingAddress" id="billing-address" class="form-control" maxlength="450" {{#invoiceIsAllowed}}data-invoice-enabled="true"{{/invoiceIsAllowed}}>{{paymentForm.billingAddress}}</textarea>

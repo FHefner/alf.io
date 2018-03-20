@@ -176,6 +176,12 @@ public interface TicketRepository {
     @Query("select * from ticket where id in (:ids)")
     List<Ticket> findByIds(@Bind("ids") List<Integer> ticketIds);
 
+    @Query("select uuid from ticket where id in (:ids)")
+    List<String> findUUIDs(@Bind("ids") List<Integer> ticketIds);
+
+    @Query("select distinct tickets_reservation_id from ticket where id in (:ids)")
+    List<String> findReservationIds(@Bind("ids") List<Integer> ticketIds);
+
     @Query("select * from ticket where special_price_id_fk = :specialPriceId")
     Optional<Ticket> findBySpecialPriceId(@Bind("specialPriceId") int specialPriceId);
 
@@ -245,7 +251,7 @@ public interface TicketRepository {
     int flagTicketAsReminderSent(@Bind("id") int ticketId);
 
     String RESET_TICKET = " TICKETS_RESERVATION_ID = null, FULL_NAME = null, EMAIL_ADDRESS = null, SPECIAL_PRICE_ID_FK = null, LOCKED_ASSIGNMENT = false, USER_LANGUAGE = null, REMINDER_SENT = false, SRC_PRICE_CTS = 0, FINAL_PRICE_CTS = 0, VAT_CTS = 0, DISCOUNT_CTS = 0, FIRST_NAME = null, LAST_NAME = null, EXT_REFERENCE = null ";
-    String RELEASE_TICKET_QUERY = "update ticket set status = 'RELEASED', uuid = :newUuid, " + RESET_TICKET + " where id = :ticketId and status = 'ACQUIRED' and tickets_reservation_id = :reservationId and event_id = :eventId";
+    String RELEASE_TICKET_QUERY = "update ticket set status = 'RELEASED', uuid = :newUuid, " + RESET_TICKET + " where id = :ticketId and status in('ACQUIRED', 'PENDING') and tickets_reservation_id = :reservationId and event_id = :eventId";
 
     @Query(RELEASE_TICKET_QUERY)
     int releaseTicket(@Bind("reservationId") String reservationId, @Bind("newUuid") String newUuid, @Bind("eventId") int eventId, @Bind("ticketId") int ticketId);

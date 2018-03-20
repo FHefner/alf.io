@@ -177,9 +177,11 @@
         var systemConf = this;
         systemConf.loading = true;
 
+        systemConf.keys = Object.keys;
+
         var loadAll = function() {
             systemConf.loading = true;
-            $q.all([EventService.getAllLanguages(), ConfigurationService.loadAll(), ConfigurationService.loadEUCountries()]).then(function(results) {
+            $q.all([EventService.getAllLanguages(), ConfigurationService.loadAll(), ConfigurationService.loadEUCountries(), ExtensionService.loadSystem()]).then(function(results) {
                 systemConf.allLanguages = results[0].data;
                 loadSettings(systemConf, results[1].data, ConfigurationService);
                 if(systemConf.general) {
@@ -200,6 +202,9 @@
                 if(systemConf.alfioPi) {
                     systemConf.alfioPiOptions = _.filter(systemConf.alfioPi.settings, function(pi) { return pi.key !== 'LABEL_LAYOUT'});
                 }
+
+                systemConf.extensionSettings = results[3].data;
+
             }, function() {
                 systemConf.loading = false;
             });
@@ -211,7 +216,7 @@
                 return;
             }
             systemConf.loading = true;
-            ConfigurationService.bulkUpdate(systemConf.settings).then(function() {
+            $q.all([ConfigurationService.bulkUpdate(systemConf.settings), ExtensionService.saveBulkSystemSetting(systemConf.extensionSettings)]).then(function() {
                 loadAll();
                 NotificationHandler.showSuccess("Configurations have been saved successfully");
             }, function(e) {
@@ -229,6 +234,10 @@
             return ConfigurationService.removeSystemConfig(config);
         };
 
+        systemConf.deleteExtensionSetting = function(config) {
+            return ExtensionService.deleteSystemSettingValue(config);
+        };
+
         $rootScope.$on('ReloadSettings', function() {
             loadAll();
         });
@@ -244,7 +253,8 @@
             $q.all([OrganizationService.getOrganization(organizationConf.organizationId),
                 ConfigurationService.loadOrganizationConfig(organizationConf.organizationId),
                 ConfigurationService.loadEUCountries(),
-                ConfigurationService.getPlatformModeStatus(organizationConf.organizationId)
+                ConfigurationService.getPlatformModeStatus(organizationConf.organizationId),
+                ExtensionService.loadOrganizationConfigWithOrgId(organizationConf.organizationId)
             ]).then(function(result) {
                     organizationConf.organization = result[0].data;
                     loadSettings(organizationConf, result[1].data, ConfigurationService);
@@ -252,6 +262,7 @@
                     var platformModeStatus = result[3].data;
                     organizationConf.platformModeEnabled = platformModeStatus.enabled;
                     organizationConf.stripeConnected = platformModeStatus.stripeConnected;
+                    organizationConf.extensionSettings = result[4].data;
                 }, function() {
                     organizationConf.loading = false;
                 });
@@ -262,7 +273,8 @@
                 return;
             }
             organizationConf.loading = true;
-            ConfigurationService.updateOrganizationConfig(organizationConf.organization, organizationConf.settings).then(function() {
+            $q.all([ConfigurationService.updateOrganizationConfig(organizationConf.organization, organizationConf.settings),
+                ExtensionService.saveBulkOrganizationSetting(organizationConf.organizationId, organizationConf.extensionSettings)]).then(function() {
                 load();
                 NotificationHandler.showSuccess("Configurations have been saved successfully");
             }, function(e) {
@@ -274,6 +286,10 @@
 
         organizationConf.delete = function(config) {
             return ConfigurationService.removeOrganizationConfig(config, organizationConf.organizationId);
+        };
+
+        organizationConf.deleteExtensionSetting = function(config) {
+            return ExtensionService.deleteOrganizationSettingValue(organizationConf.organizationId, config);
         };
 
         $rootScope.$on('ReloadSettings', function() {
@@ -293,7 +309,7 @@
                     var event = result.data.event;
                     eventConf.eventName = event.shortName;
                     eventConf.eventId = event.id;
-                    $q.all([ConfigurationService.loadEventConfig(eventConf.eventId), ConfigurationService.loadPluginsConfig(eventConf.eventId)]).then(function(result) {
+                    $q.all([ConfigurationService.loadEventConfig(eventConf.eventId), ConfigurationService.loadPluginsConfig(eventConf.eventId), ExtensionService.loadEventConfigWithOrgIdAndEventId(eventConf.organizationId, eventConf.eventId)]).then(function(result) {
                         deferred.resolve([{data:event}].concat(result));
                     }, function(e) {
                         deferred.reject(e);
@@ -305,7 +321,7 @@
             } else {
                 eventConf.eventId = $stateParams.eventId;
                 eventConf.organizationId = $stateParams.organizationId;
-                return $q.all([EventService.getEventById($stateParams.eventId), ConfigurationService.loadEventConfig($stateParams.eventId), ConfigurationService.loadPluginsConfig($stateParams.eventId)])
+                return $q.all([EventService.getEventById($stateParams.eventId), ConfigurationService.loadEventConfig($stateParams.eventId), ConfigurationService.loadPluginsConfig($stateParams.eventId), ExtensionService.loadEventConfigWithOrgIdAndEventId(eventConf.organizationId, eventConf.eventId)])
             }
         };
 
@@ -320,6 +336,7 @@
                         eventConf.alfioPiOptions = _.filter(eventConf.alfioPi.settings, function(pi) { return pi.key !== 'LABEL_LAYOUT'});
                         eventConf.labelLayout = _.find(eventConf.alfioPi.settings, function(pi) { return pi.key === 'LABEL_LAYOUT'});
                     }
+                    eventConf.extensionSettings = result[3].data;
                     eventConf.loading = false;
                 }, function() {
                     eventConf.loading = false;
@@ -336,7 +353,9 @@
                 return;
             }
             eventConf.loading = true;
-            $q.all([ConfigurationService.updateEventConfig(eventConf.organizationId, eventConf.eventId, eventConf.settings), ConfigurationService.bulkUpdatePlugins(eventConf.eventId, eventConf.pluginSettings)]).then(function() {
+            $q.all([ConfigurationService.updateEventConfig(eventConf.organizationId, eventConf.eventId, eventConf.settings),
+                ConfigurationService.bulkUpdatePlugins(eventConf.eventId, eventConf.pluginSettings),
+                ExtensionService.saveBulkEventSetting(eventConf.organizationId, eventConf.eventId, eventConf.extensionSettings)]).then(function() {
                 load();
                 NotificationHandler.showSuccess("Configurations have been saved successfully");
             }, function(e) {
@@ -348,6 +367,10 @@
 
         eventConf.delete = function(config) {
             return ConfigurationService.removeEventConfig(config, eventConf.eventId);
+        };
+
+        eventConf.deleteExtensionSetting = function(config) {
+            return ExtensionService.deleteEventSettingValue(eventConf.organizationId, eventConf.eventId, config);
         };
 
         $rootScope.$on('ReloadSettings', function() {
