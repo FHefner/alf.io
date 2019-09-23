@@ -30,10 +30,28 @@ import java.util.Comparator;
 @Getter
 public class TicketCategory {
 
-    public static Comparator<TicketCategory> COMPARATOR = (tc1, tc2) -> new CompareToBuilder().append(tc1.utcInception, tc2.utcInception).append(tc1.utcExpiration, tc2.utcExpiration).toComparison();
+    public static final Comparator<TicketCategory> COMPARATOR = (tc1, tc2) -> new CompareToBuilder().append(tc1.utcInception, tc2.utcInception).append(tc1.utcExpiration, tc2.utcExpiration).toComparison();
 
     public enum Status {
         ACTIVE, NOT_ACTIVE
+    }
+
+    /**
+     * Defines the check-in strategy that must be adopted for this TicketCategory
+     */
+    public enum TicketCheckInStrategy {
+        /**
+         * Default, retro-compatible. Attendees can check-in only once, using their ticket
+         */
+        ONCE_PER_EVENT,
+        /**
+         * Extends ONCE_PER_EVENT by adding the possibility to re-enter the event by using the printed badge.
+         * If an attendee tries to enter more than once in a single day, the operator will receive a warning.
+         * ** IMPORTANT **:
+         * additional check-ins can be done only using the printed badge.
+         * This ensures that a badge is printed only once
+         */
+        ONCE_PER_DAY
     }
 
     private final int id;
@@ -51,6 +69,9 @@ public class TicketCategory {
     private final ZonedDateTime validCheckInTo;
     private final ZonedDateTime ticketValidityStart;
     private final ZonedDateTime ticketValidityEnd;
+    private final String currencyCode;
+    private final int ordinal;
+    private final TicketCheckInStrategy ticketCheckInStrategy;
 
 
     public TicketCategory(@JsonProperty("id") @Column("id") int id,
@@ -67,7 +88,10 @@ public class TicketCategory {
                           @JsonProperty("validCheckInFrom") @Column("valid_checkin_from") ZonedDateTime validCheckInFrom,
                           @JsonProperty("validCheckInTo") @Column("valid_checkin_to") ZonedDateTime validCheckInTo,
                           @JsonProperty("ticketValidityStart") @Column("ticket_validity_start") ZonedDateTime ticketValidityStart,
-                          @JsonProperty("ticketValidityEnd") @Column("ticket_validity_end") ZonedDateTime ticketValidityEnd) {
+                          @JsonProperty("ticketValidityEnd") @Column("ticket_validity_end") ZonedDateTime ticketValidityEnd,
+                          @JsonProperty("currencyCode") @Column("currency_code") String currencyCode,
+                          @JsonProperty("ordinal") @Column("ordinal") Integer ordinal,
+                          @JsonProperty("ticketCheckInStrategy") @Column("ticket_checkin_strategy") TicketCheckInStrategy ticketCheckInStrategy) {
         this.id = id;
         this.utcInception = utcInception;
         this.utcExpiration = utcExpiration;
@@ -83,11 +107,13 @@ public class TicketCategory {
         this.validCheckInTo = validCheckInTo;
         this.ticketValidityStart = ticketValidityStart;
         this.ticketValidityEnd = ticketValidityEnd;
+        this.currencyCode = currencyCode;
+        this.ordinal = ordinal != null ? ordinal : 0;
+        this.ticketCheckInStrategy = ticketCheckInStrategy;
     }
 
     public BigDecimal getPrice() {
-        //TODO: apply this conversion only for some currency. Not all are cent based.
-        return MonetaryUtil.centsToUnit(srcPriceCts);
+        return MonetaryUtil.centsToUnit(srcPriceCts, currencyCode);
     }
     
     public boolean getFree() {

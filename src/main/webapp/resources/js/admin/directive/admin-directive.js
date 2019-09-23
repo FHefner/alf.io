@@ -31,27 +31,27 @@
                     }
                 };
 
-                var getNowAtStartOfHour = function() {
-                    return moment().startOf('hour');
+                var getNowAtStartOfHour = function(dayToAdd, hourToAdd) {
+                    return moment().startOf('hour').add(dayToAdd, 'd').add(hourToAdd, 'h');
                 };
 
-                var initDateUsingNow = function(modelObj) {
+                var initDateUsingNow = function(modelObj, dayToAdd, hoursToAddIfDefault) {
                     if(!angular.isDefined(modelObj) || !angular.isDefined(modelObj.date) || !angular.isDefined(modelObj.time)) {
-                        return getNowAtStartOfHour();
+                        return getNowAtStartOfHour(dayToAdd, hoursToAddIfDefault);
                     }
                     var date = moment(modelObj.date + 'T' + modelObj.time);
-                    return date.isValid() ? date : getNowAtStartOfHour();
+                    return date.isValid() ? date : getNowAtStartOfHour(dayToAdd, hoursToAddIfDefault);
                 };
 
 
-                var startDate = initDateUsingNow(scope.startModelObj);
-                var endDate = initDateUsingNow(scope.endModelObj);
+                var startDate = initDateUsingNow(scope.startModelObj, 1, 0);
+                var endDate = initDateUsingNow(scope.endModelObj, 1, 1);
 
                 var result = startDate.format(dateFormat) + ' / ' + endDate.format(dateFormat);
                 ctrl.$setViewValue(result);
                 element.val(result);
 
-                var minDate = scope.minDate || getNowAtStartOfHour();
+                var minDate = scope.minDate || getNowAtStartOfHour(0, 0);
 
                 var pickerElement = element.daterangepicker({
                     format: dateFormat,
@@ -67,6 +67,8 @@
 
                 scope.startModelObj['date'] = startDate.format('YYYY-MM-DD');
                 scope.startModelObj['time'] = startDate.format('HH:mm');
+                scope.endModelObj['date'] = endDate.format('YYYY-MM-DD');
+                scope.endModelObj['time'] = endDate.format('HH:mm');
 
 
                 function updateDates(picker, override) {
@@ -111,7 +113,6 @@
                 element.on('hide.daterangepicker', function(ev, picker) {
                 	updateDates(picker, true);
                 });
-
             }
         };
     });
@@ -125,7 +126,8 @@
                 startDate: '=',
                 startModelObj: '=startModel',
                 watchObj: '=',
-                noInitDate: '='
+                noInitDate: '=',
+                displayOnTop: '='
             },
             require: '^ngModel',
             link: function(scope, element, attrs, ctrl) {
@@ -171,7 +173,8 @@
                     timePicker: true,
                     timePicker12Hour: false,
                     timePickerIncrement: 1,
-                    singleDatePicker: true
+                    singleDatePicker: true,
+                    drops: !!scope.displayOnTop ? 'up' : 'down'
                 });
 
                 if(!scope.noInitDate) {
@@ -248,7 +251,8 @@
             templateUrl: '/resources/angular-templates/admin/partials/form/control-buttons.html',
             scope: {
                 formObj: '=',
-                cancelHandler: '='
+                cancelHandler: '=',
+                disableSubmit:'<'
             },
             link: function(scope, element, attrs) {
                 scope.successText = angular.isDefined(attrs.successText) ? attrs.successText : "Save";
@@ -317,10 +321,13 @@
             },
             restrict: 'E',
             templateUrl: '/resources/angular-templates/admin/partials/event/fragment/edit-event-header.html',
-            controller: function EditEventHeaderController($scope, $stateParams, LocationService, FileUploadService, UtilsService, EventService) {
+            controller: function EditEventHeaderController($scope, $stateParams, LocationService, FileUploadService, UtilsService, EventService, ConfigurationService) {
+
+                $scope.baseUrl = ConfigurationService.getBaseUrl();
+
                 if(!angular.isDefined($scope.fullEditMode)) {
                     var source = _.pick($scope.eventObj, ['id','shortName', 'displayName', 'organizationId', 'location',
-                        'description', 'websiteUrl', 'externalUrl', 'termsAndConditionsUrl', 'imageUrl', 'fileBlobId', 'formattedBegin','type',
+                        'description', 'websiteUrl', 'externalUrl', 'termsAndConditionsUrl', 'privacyPolicyUrl', 'imageUrl', 'fileBlobId', 'formattedBegin','type',
                         'formattedEnd', 'geolocation', 'locales']);
                     angular.extend($scope.obj, source);
                     var beginDateTime = moment(source['formattedBegin']);
@@ -333,23 +340,60 @@
                         date: endDateTime.format('YYYY-MM-DD'),
                         time: endDateTime.format('HH:mm')
                     };
+
+                    if(!$scope.obj.geolocation) {
+                        $scope.obj.geolocation = {timeZone: $scope.eventObj.timeZone, latitude: $scope.eventObj.latitude, longitude: $scope.eventObj.longitude};
+                    }
                 }
 
                 LocationService.getTimezones().then(function(res) {
                     $scope.timezones = res.data;
                 });
 
-                $scope.selectedLanguages = {};
+                $scope.selectedLanguages = {
+                    langs: []
+                };
 
-                EventService.getSupportedLanguages().success(function(result) {
+                var evaluateAvailableLanguages = function(allLanguages) {
+                    $scope.availableLanguages = _.filter(allLanguages, function(r) {
+                        return !isLangSelected(r);
+                    });
+                };
+
+                var isLangSelected = function(r) {
                     var locales = $scope.obj.locales;
-                    var selected = _.filter(result, function(r) {
-                        return (r.value & locales) === r.value;
+                    return (r.value & locales) === r.value;
+                };
+
+                function handleLocales() {
+                    EventService.getSupportedLanguages().success(function(allLanguages) {
+                        var selected = _.filter(allLanguages, isLangSelected);
+                        if(selected.length === 0 && allLanguages.length > 0) {
+                            $scope.addDescription(allLanguages[0]);
+                            selected.push(allLanguages[0]);
+                        }
+                        $scope.selectedLanguages.langs = _.map(selected, function(r) {
+                            return r.value;
+                        });
+
+                        $scope.allLanguages = allLanguages;
+                        evaluateAvailableLanguages(allLanguages);
                     });
-                    $scope.selectedLanguages.langs = _.map(selected, function(r) {
-                        return r.value;
-                    });
+                }
+
+                handleLocales();
+                $scope.$watch('obj.locales', function(newValue) {
+                    handleLocales();
                 });
+
+                $scope.addDescription = function(language) {
+                    $scope.toggleLanguageSelection(language);
+                    evaluateAvailableLanguages($scope.allLanguages);
+                };
+                $scope.removeDescription = function(language) {
+                    $scope.toggleLanguageSelection(language);
+                    evaluateAvailableLanguages($scope.allLanguages);
+                };
 
                 $scope.isLanguageSelected = function(lang) {
                     return lang && $scope.selectedLanguages.langs && $scope.selectedLanguages.langs.indexOf(lang.value) > -1;
@@ -392,7 +436,10 @@
                     $scope.loadingMap = true;
                     LocationService.clientGeolocate(location).then(function(result) {
                         delete $scope['mapError'];
-                        $scope.obj['geolocation'] = result;
+
+                        if(result.latitude !== null && result.longitude !== null) {
+                            $scope.obj['geolocation'] = result;
+                        }
                         $scope.loadingMap = false;
                     }, function(e) {
                         $scope.mapError = e;
@@ -436,9 +483,7 @@
 
                 $scope.$watch('droppedFile', function (droppedFile) {
                     if(angular.isDefined(droppedFile)) {
-                        if(droppedFile === null) {
-                            alert('File drag&drop is not working, please click on the element and select the file.')
-                        } else {
+                        if(droppedFile !== null) {
                             $scope.imageDropped([droppedFile]);
                         }
                     }
@@ -450,7 +495,7 @@
                         $scope.$applyAsync(function() {
                             var imageBase64 = e.target.result;
                             $scope.imageBase64 = imageBase64;
-                            FileUploadService.upload({file : imageBase64.substring(imageBase64.indexOf('base64,') + 7), type : files[0].type, name : files[0].name}).success(function(imageId) {
+                            FileUploadService.uploadImageWithResize({file : imageBase64.substring(imageBase64.indexOf('base64,') + 7), type : files[0].type, name : files[0].name}).success(function(imageId) {
                                 $scope.obj.fileBlobId = imageId;
                             })
                         })
@@ -458,7 +503,7 @@
                     };
                     if (files.length <= 0) {
                 		alert('Your image not uploaded correctly.Please upload the image again');
-	                } else if (!((files[0].type == 'image/png') || (files[0].type == 'image/jpeg'))) {
+	                } else if (!((files[0].type === 'image/png') || (files[0].type === 'image/jpeg'))) {
 	                	alert('only png or jpeg files are accepted');
 	                } else if (files[0].size > 10240000) {
 	                	alert('Image size exceeds the allowable limit 10MB');
@@ -466,6 +511,10 @@
 	                	reader.readAsDataURL(files[0]);
 	                }
                 };
+
+                $scope.isObjectEmpty = function(obj) {
+                    return !obj || Object.keys(obj).length === 0;
+                }
             }
         }
     });
@@ -519,6 +568,10 @@
                     initPaymentProxies();
                 }, true);
 
+                $scope.$watch('obj.allowedPaymentProxies', function() {
+                    initPaymentProxies();
+                }, true);
+
             }
         }
     }]);
@@ -540,15 +593,67 @@
         return {
             restrict: 'E',
             templateUrl: '/resources/angular-templates/admin/partials/event/fragment/edit-category.html',
-            controller: function($scope) {
+            controller: function($scope, ConfigurationService) {
+
+                if($scope.event.id !== undefined) {
+                    ConfigurationService.loadSingleConfigForEvent($scope.event.id, 'CHECK_IN_COLOR_CONFIGURATION').then(function(result) {
+                        var data = {};
+                        if(result.data && result.data.length > 0) {
+                            try {
+                                data = JSON.parse(result.data);
+                            } catch(e) {
+                                console.error("cannot deserialize JSON", e);
+                            }
+                        }
+                        if(data && data.configurations) {
+                            var configurations = data.configurations
+                                .map(function(c) { c.categories = c.categories.filter(function(tcId) { return tcId === $scope.ticketCategory.id}); return c;})
+                                .filter(function(c) {return c.categories.length > 0;});
+                            if(configurations.length > 0) {
+                                $scope.ticketCategory['badgeColor'] = configurations[0].colorName;
+                            }
+                        }
+                    });
+                }
+
                 $scope.buildPrefix = function(index, name) {
                     return angular.isDefined(index) ? index + "-" + name : name;
                 };
 
-                $scope.baseUrl = window.location.origin;
+                $scope.baseUrl = ConfigurationService.getBaseUrl();
 
                 $scope.isLanguagePresent = function(locales, value) {
                     return (locales & value) === value;
+                };
+
+                $scope.categoryTypes = [
+                    {
+                        name: 'Public',
+                        tokenGenerationRequested: false
+                    },{
+                        name: 'Hidden',
+                        tokenGenerationRequested: true
+                    }
+                ];
+
+                var allocationStrategies = [
+                    {
+                        name: 'Grow dynamically',
+                        bounded: false
+                    }, {
+                        name: 'Fixed number of tickets',
+                        bounded: true
+                    }
+                ];
+
+                $scope.allocationStrategies = allocationStrategies;
+                $scope.onTokenGenerationRequestedChange = function() {
+                    if($scope.ticketCategory.tokenGenerationRequested) {
+                        $scope.ticketCategory.bounded = true;
+                        $scope.allocationStrategies = allocationStrategies.slice(1);
+                    } else {
+                        $scope.allocationStrategies = allocationStrategies;
+                    }
                 };
 
                 $scope.helpAllocationStrategyCollapse = true;
@@ -568,8 +673,109 @@
                     $scope.helpAccessCodeCollapse = !$scope.helpAccessCodeCollapse;
                 };
 
-                $scope.customCheckInCollapsed = true;
-                $scope.customValidityCollapsed = true;
+                var hasCustomCheckIn = function(ticketCategory) {
+                    return ticketCategory.formattedValidCheckInFrom ||
+                        ticketCategory.validCheckInFrom ||
+                        ticketCategory.formattedValidCheckInTo ||
+                        ticketCategory.validCheckInTo;
+                };
+
+                var hasCustomTicketValidity = function(ticketCategory) {
+                    return ticketCategory.formattedValidityStart||
+                        ticketCategory.ticketValidityStart ||
+                        ticketCategory.formattedValidityEnd ||
+                        ticketCategory.ticketValidityEnd;
+                };
+
+                var eventDateToMoment = function(d) {
+                    if(d.date) {
+                        return moment(d.date + 'T' + d.time);
+                    }
+                    return moment(d);
+                };
+
+                var eventStartDate = eventDateToMoment($scope.event.begin);
+                var eventEndDate = eventDateToMoment($scope.event.end);
+                $scope.eventStartDate = eventStartDate.format('YYYY-MM-DD HH:mm');
+                $scope.eventEndDate = eventEndDate.format('YYYY-MM-DD HH:mm');
+
+                $scope.ticketValidity = [];
+                $scope.ticketValidityTypes = [{
+                    code: 'ALL',
+                    description: 'For the entire event'
+                }, {
+                    code: 'CUSTOM',
+                    description: 'Custom'
+                }];
+                $scope.ticketValidityType = hasCustomTicketValidity($scope.ticketCategory) ? 'CUSTOM' : 'ALL';
+
+                $scope.checkInAllowedOptions = [
+                    {
+                        code: 'ANYTIME',
+                        description: 'At any time'
+                    }, {
+                        code: 'CUSTOM',
+                        description: 'Custom'
+                    }
+                ];
+                $scope.ticketCheckInStrategies = [
+                    {
+                        code: 'ONCE_PER_EVENT',
+                        description: 'Attendees check in only once, using their ticket'
+                    },
+                    {
+                        code: 'ONCE_PER_DAY',
+                        description: 'Attendees check in the first day using their ticket, then the following day(s) using their badge'
+                    }
+                ];
+                $scope.badgeColors = [
+                    { code: 'primary', description: 'blue' },
+                    { code: 'secondary', description: 'gray' },
+                    { code: 'success', description: 'green' },
+                    { code: 'danger', description: 'red' },
+                    { code: 'warning', description: 'yellow' },
+                    { code: 'info', description: 'cyan'},
+                    { code: 'light', description: 'white' },
+                    { code: 'dark', description: 'black' }
+                ];
+                $scope.checkInStrategiesVisible = eventEndDate.endOf('day').diff(eventStartDate.startOf('day'), 'days') > 0;
+                $scope.ticketCheckInStrategy = $scope.ticketCategory.ticketCheckInStrategy || 'ONCE_PER_EVENT';
+                $scope.checkInAllowed = hasCustomCheckIn($scope.ticketCategory) ? 'CUSTOM' : 'ANYTIME';
+                var supportedLanguages = _.filter($scope.allLanguagesMapping, function(l) {
+                    return $scope.isLanguagePresent($scope.event.locales, l.value);
+                });
+                var filterLanguages = function(included) {
+                    return _.filter(supportedLanguages, function(l) {
+                        return included === ($scope.ticketCategory.description != null && angular.isDefined($scope.ticketCategory.description[l.locale]));
+                    });
+                };
+                $scope.definedLanguages = filterLanguages(true);
+                $scope.availableLanguages = filterLanguages(false);
+                $scope.addDescription = function(language) {
+                    if($scope.ticketCategory.description == null) {
+                        $scope.ticketCategory.description = {};
+                    }
+                    $scope.ticketCategory.description[language.locale] = '';
+                    $scope.definedLanguages = filterLanguages(true);
+                    $scope.availableLanguages = filterLanguages(false);
+                }
+
+                //super ugly!
+                $scope.$parent.editCategoryCallback = function() {
+                    if($scope.ticketValidityType !== 'CUSTOM') {
+                        delete $scope.ticketCategory.customValidityStartFromString;
+                        delete $scope.ticketCategory.ticketValidityStart;
+                        delete $scope.ticketCategory.customValidityStartToString;
+                        delete $scope.ticketCategory.ticketValidityEnd;
+                    }
+
+                    if($scope.checkInAllowed !== 'CUSTOM') {
+                        delete $scope.ticketCategory.validCheckInFromString;
+                        delete $scope.ticketCategory.validCheckInFrom;
+                        delete $scope.ticketCategory.validCheckInToString;
+                        delete $scope.ticketCategory.validCheckInTo;
+                    }
+                }
             }
         };
     });
@@ -761,7 +967,7 @@
                 });
                 ctrl.styleClass = ctrl.styleClass || 'btn btn-warning';
             },
-            template: '<a data-ng-class="ctrl.styleClass" data-ui-sref="events.single.show-waiting-queue({eventName: ctrl.eventName})"><i class="fa fa-group" ng-if="!ctrl.justCount"></i> <span ng-class="{\'sr-only\': ctrl.justCount}">Waiting queue</span> <span ng-class="{\'badge\': !ctrl.justCount}">{{ctrl.count}}</span></a>'
+            template: '<a data-ng-class="ctrl.styleClass" data-ui-sref="events.single.show-waiting-queue({eventName: ctrl.eventName})"><i class="fa fa-group" ng-if="!ctrl.justCount"></i> <span ng-class="{\'sr-only\': ctrl.justCount}">Waiting list</span> <span ng-class="{\'badge\': !ctrl.justCount}">{{ctrl.count}}</span></a>'
         }
     });
 
@@ -812,20 +1018,24 @@
             restrict: 'E',
             bindToController: true,
             scope: {
-                text: '='
+                text: '=',
+                buttonText: '@'
             },
             controllerAs: 'ctrl',
-            template:'<span><a class="btn btn-xs btn-default" ng-click="ctrl.openModal()"><i class="fa fa-eye"></i> preview</a></span>',
+            template:'<span><a class="btn btn-xs btn-default" ng-click="ctrl.openModal()"><i class="fa fa-eye"></i> {{ctrl.buttonText}}</a></span>',
             controller: function() {
                 var ctrl = this;
+                if(!ctrl.buttonText) {
+                    ctrl.buttonText = 'preview';
+                }
 
                 ctrl.openModal = function() {
                     if (ctrl.text) {
                         UtilsService.renderCommonMark(ctrl.text)
                             .then(function (res) {
                                     return $uibModal.open({
-                                        size: 'sm',
-                                        template: '<div class="modal-header"><h1>Preview</h1></div><div class="modal-body" ng-bind-html="text"></div><div class="modal-footer"><button class="btn btn-default" data-ng-click="ok()">close</button></div>',
+                                        size: 'lg',
+                                        template: '<div class="modal-header"><h1>Preview</h1></div><div class="modal-body markdown-content" ng-bind-html="text"></div><div class="modal-footer"><button class="btn btn-default" data-ng-click="ok()">close</button></div>',
                                         backdrop: 'static',
                                         controller: function ($scope) {
                                             $scope.ok = function () {
@@ -854,14 +1064,14 @@
         }
     }]);
 
-    directives.directive('alfioSidebar', ['EventService', 'UtilsService', '$state', '$window', '$rootScope', function(EventService, UtilsService, $state, $window, $rootScope) {
+    directives.directive('alfioSidebar', ['EventService', 'OrganizationService', 'UtilsService', 'ConfigurationService', '$state', '$window', '$rootScope', function(EventService, OrganizationService, UtilsService, ConfigurationService, $state, $window, $rootScope) {
         return {
             restrict: 'E',
             bindToController: true,
             scope: {},
             controllerAs: 'ctrl',
             templateUrl: '/resources/angular-templates/admin/partials/main/sidebar.html',
-            controller: ['$location', '$anchorScroll', '$scope', 'NotificationHandler', function($location, $anchorScroll, $scope, NotificationHandler) {
+            controller: ['$location', '$anchorScroll', '$scope', 'NotificationHandler', '$uibModal', function($location, $anchorScroll, $scope, NotificationHandler, $uibModal) {
                 var ctrl = this;
                 var toUnbind = [];
                 var detectCurrentView = function(state) {
@@ -873,6 +1083,10 @@
                 var loadEventData = function() {
                     if(ctrl.displayEventData && $state.params.eventName) {
                         EventService.getEvent($state.params.eventName).success(function(event) {
+                            ConfigurationService.loadSingleConfigForEvent(event.event.id, 'USE_PARTNER_CODE_INSTEAD_OF_PROMOTIONAL')
+                                .then(function(result) {
+                                    ctrl.promoCodeDescription = (result.data === 'true') ? 'Partner' : 'Promo';
+                                });
                             ctrl.event = event.event;
                             ctrl.internal = (ctrl.event.type === 'INTERNAL');
                             ctrl.owner = ctrl.event.visibleForCurrentUser;
@@ -890,13 +1104,47 @@
                                 EventService.exportAttendees(ctrl.event);
                             };
                             ctrl.downloadSponsorsScan = function() {
-                                $window.open($window.location.pathname+"/api/events/"+ctrl.event.shortName+"/sponsor-scan/export.csv");
+                                var pathName = $window.location.pathname;
+                                if(!pathName.endsWith("/")) {
+                                    pathName = pathName + "/";
+                                }
+                                $window.open(pathName+"api/events/"+ctrl.event.shortName+"/sponsor-scan/export");
+                            };
+                            ctrl.openWaitingQueueModal = function() {
+                                var modal = $uibModal.open({
+                                    size:'lg',
+                                    templateUrl: '/resources/angular-templates/admin/partials/event/fragment/download-waiting-queue.html',
+                                    backdrop: 'static',
+                                    controllerAs: 'ctrl',
+                                    controller: function($scope) {
+                                        var outCtrl = ctrl;
+                                        var ctrl = this;
+                                        $scope.format = 'excel';
+
+                                        $scope.download = function() {
+                                            var queryString = "format="+$scope.format;
+                                            var pathName = $window.location.pathname;
+                                            if(!pathName.endsWith("/")) {
+                                                pathName = pathName + "/";
+                                            }
+                                            $window.open(pathName+"api/event/" + event.event.shortName + "/waiting-queue/download?"+queryString);
+                                        }
+
+                                        ctrl.close = function() {
+                                            modal.close();
+                                        }
+                                    }
+                                });
                             };
                             ctrl.downloadInvoices = function() {
                                 EventService.countInvoices(ctrl.event.shortName).then(function (res) {
                                     var count = res.data;
                                     if(count > 0) {
-                                        $window.open($window.location.pathname+"/api/events/"+ctrl.event.shortName+"/all-invoices");
+                                        var pathName = $window.location.pathname;
+                                        if(!pathName.endsWith("/")) {
+                                            pathName = pathName + "/";
+                                        }
+                                        $window.open(pathName+"api/events/"+ctrl.event.shortName+"/all-invoices");
                                     } else {
                                         NotificationHandler.showInfo("No invoices have been found.");
                                     }
@@ -930,6 +1178,39 @@
                 ctrl.isDetail = ctrl.currentView === 'EVENT_DETAIL';
                 ctrl.displayEventData = $state.current.data && $state.current.data.displayEventData;
                 loadEventData();
+                var displayConfiguration = function() {
+
+                    ConfigurationService.loadCurrentConfigurationContext(OrganizationService, EventService).then(function(res) {
+                        ctrl.organizations = res.organizations;
+                        ctrl.settingCategories = [
+                            {
+                                id: 'GENERAL',
+                                name: 'General'
+                            },
+                            {
+                                id: 'RESERVATION_UI',
+                                name: 'Reservation UI'
+                            },
+                            {
+                                id: 'WAITING_LIST',
+                                name: 'Waiting List'
+                            },
+                            {
+                                id: 'MAIL',
+                                name: 'E-Mail'
+                            },
+                            {
+                                id: 'INVOICE',
+                                name: 'Invoice'
+                            },
+                            {
+                                id: 'PAYMENT',
+                                name: 'Payment'
+                            }
+                        ];
+                    });
+                };
+
                 toUnbind.push($rootScope.$on('$stateChangeSuccess', function(event, toState, toParams, fromState, fromParams) {
                     ctrl.currentView = detectCurrentView(toState);
                     ctrl.isDetail = ctrl.currentView === 'EVENT_DETAIL';
@@ -938,15 +1219,18 @@
                     if(!ctrl.displayEventData) {
                         delete ctrl.event;
                     }
+                    if(ctrl.isConfiguration()) {
+                        displayConfiguration();
+                    }
                 }));
 
                 ctrl.isConfiguration = function() {
                     return ctrl.currentView === 'CONFIGURATION';
                 };
 
-                toUnbind.push($rootScope.$on('ConfigurationMenuLoaded', function(e, organizations) {
-                    ctrl.organizations = organizations;
-                }));
+                if(ctrl.isConfiguration()) {
+                    displayConfiguration();
+                }
 
                 ctrl.navigateTo = function(id) {
                     //thanks to http://stackoverflow.com/a/14717011
@@ -1002,7 +1286,7 @@
         return {
             restrict: 'E',
             scope: {},
-            template: '<div class="markdown-help text-right"><img class="markdown-logo" src="../resources/images/markdown-logo.svg" /> <a href="http://commonmark.org/help/" target="_blank">Markdown (CommonMark) supported</a></div> '
+            template: '<div class="markdown-help text-right"><img class="markdown-logo" src="../resources/images/markdown-logo.svg" /> <a href="http://commonmark.org/help/" target="_blank">How to format text</a></div> '
         };
     });
 
@@ -1016,6 +1300,43 @@
                 }
             }
         };
-    }])
+    }]);
+
+    directives.directive('languageFlag', function() {
+        return {
+            restrict: 'E',
+            scope: {
+                lang: '@'
+            },
+            controller: function($scope) {
+                $scope.flag = $scope.lang === 'en' ? 'gb' : $scope.lang;
+            },
+            template: '<img class="img-center" ng-src="../resources/images/flags/{{flag}}.gif">'
+        };
+    });
+
+    directives.directive('urlTextField', function() {
+        return {
+            restrict: 'A',
+            scope: {},
+            link: function($scope, element, attrs) {
+                element.on('focus', function() {
+                    if(element.val() === '') {
+                        element.val('https://');
+                        setTimeout(function() {
+                            element.get(0).setSelectionRange(8, 8);
+                        });
+                    }
+                });
+                var urlProtocolMatcher = /^https?:\/\/.+$/;
+                element.on('paste', function(e) {
+                    var pastedText = e.originalEvent.clipboardData.getData('text'); //thanks to https://stackoverflow.com/a/11605419
+                    if(element.val() === 'https://' && urlProtocolMatcher.test(pastedText)) {
+                        element.select();
+                    }
+                })
+            }
+        }
+    })
     
 })();

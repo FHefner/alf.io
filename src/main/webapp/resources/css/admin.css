@@ -9,14 +9,6 @@ ng\:form {
   display: block;
 }
 
-@font-face {
-  font-family: 'Architects Daughter';
-  font-style: normal;
-  font-weight: 400;
-  src: local('Architects Daughter'), local('ArchitectsDaughter'), url("../font/ArchitectsDaughter.woff2") format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215, U+E0FF, U+EFFD, U+F000;
-}
-
 div.menu-spacer {
     padding-top:50px;
 }
@@ -224,7 +216,30 @@ td.cell-wrap {
 
 @media screen and (min-width: 991px) {
 
-    .setting input[type="text"], .setting input:not([type]), .setting textarea, .setting select {
+    .map-container {
+        min-height: 300px;
+    }
+
+    .map-image {
+        max-height: 300px;
+    }
+
+    .map-loading {
+        position: absolute;
+        top: 107px;
+        left: 107px;
+        z-index: -1;
+    }
+
+    .setting input[type="text"], .setting input:not([type]) {
+        text-indent:85px;
+    }
+
+    .setting select {
+        text-indent: 85px;
+    }
+
+    .setting textarea {
         padding-left: 85px;
     }
 
@@ -233,13 +248,26 @@ td.cell-wrap {
         left: 20px;
         top: 9px;
         width: 75px;
+        font-size: 70% !important;
     }
 
     .category-conf .setting input[type="text"],
     .category-conf .setting input:not([type]),
-    .category-conf .setting textarea,
     .category-conf .setting select {
         padding-left: 110px;
+    }
+
+    .category-conf .setting textarea {
+        padding-left: 110px;
+    }
+
+    @-moz-document url-prefix() {
+        .category-conf .setting select {
+            text-indent: 50px;
+        }
+        .setting select {
+            text-indent: 40px;
+        }
     }
 
     .category-conf .settings-label {
@@ -304,12 +332,6 @@ a.emulate-nav-pills-link {
     font-weight: bolder;
 }
 
-.title {
-    font-family: 'Architects Daughter', cursive;
-    font-size: 3em;
-    font-weight: 500;
-}
-
 .event-logo {
     max-height: 200px;
 }
@@ -348,8 +370,8 @@ a.emulate-nav-pills-link {
     stroke:white;
 }
 .slice-pending {
-    fill: #0408de;
-    background-color: #0408DE;
+    fill: #7670b7;
+    background-color: #7670b7;
     stroke:white;
 }
 .slice-danger {
@@ -379,8 +401,14 @@ a.emulate-nav-pills-link {
 }
 
 .event-tw .ct-series-a .ct-bar {
-    fill: #428bca;
-    stroke:#428bca;
+    fill: #3c763d;
+    stroke:#3c763d;
+    color:white;
+}
+
+.event-tw .ct-series-b .ct-bar {
+    fill: #f0ad4e;
+    stroke:#f0ad4e;
     color:white;
 }
 
@@ -398,17 +426,18 @@ a.emulate-nav-pills-link {
 }
 
 .event-tl .ct-series-a .ct-point, .event-tl .ct-series-a .ct-line {
-    stroke:#428bca;
+    stroke:#3c763d;
+    color:white;
+}
+
+.event-tl .ct-series-b .ct-point, .event-tl .ct-series-b .ct-line {
+    stroke:#f0ad4e;
     color:white;
 }
 
 .hide-overflowing-text {
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.map-container {
-    min-height: 360px;
 }
 
 .wMarginTop30px {
@@ -640,4 +669,150 @@ span.path {
 
 .form-group-inline {
     vertical-align: top !important;
+}
+
+.ml-1 {
+    margin-left: 15px;
+}
+
+.fa-1_5x {
+    font-size: 1.2em !important;
+}
+
+.category-detail {}
+
+.category-detail h3 {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.category-detail .list-unstyled {
+    margin-top: 5px;
+}
+
+.category-detail .list-unstyled > li {
+    margin-bottom: 5px;
+}
+
+.category-description {
+    border-bottom: 1px solid #eee;
+    margin-bottom: 5px;
+    padding: 2px 0;
+}
+
+.category-description:last-child {
+    border-bottom: 0;
+}
+
+.mr-10 {
+    margin-right: 10px;
+}
+
+.disabled-value {
+    opacity: .5;
+}
+
+.nz-toggle-wrap {
+    vertical-align: bottom;
+}
+
+.boolean-option {
+    margin: 10px 0;
+}
+
+.boolean-option > label {
+    margin-left: 10px;
+}
+
+
+/* note, this must be reported and used in the front-end too */
+
+.markdown-content img {
+    max-width:100%;
+}
+
+.markdown-content table {
+    width:100%;
+}
+
+.markdown-content table th,
+.markdown-content table td {
+    padding-top:0.6rem;
+    padding-bottom:0.6rem;
+}
+
+.markdown-content table th {
+    border-bottom: 2px solid #e3e3e3;
+}
+
+.markdown-content table td {
+    border-top: 1px solid #e3e3e3;
+}
+
+.width-100 {
+    width: 100%;
+}
+
+.draggable {
+    cursor: grab;
+}
+
+.gu-transit {
+    cursor: grabbing;
+}
+
+.editable-translation {
+    cursor: pointer;
+    padding:4px;
+}
+
+.editable-translation:hover:after {
+    content:' \f044';
+    padding-left:6px;
+    display: inline-block;
+    font-family: FontAwesome;
+    font-size: 14px;
+}
+
+.list-group .help {
+    background-color: transparent;
+    border: 0;
+}
+
+div.preformatted {
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.pi-primary {
+    background-color: #007bff;
+    color: #007bff;
+}
+.pi-secondary {
+    background-color: #6c757d;
+    color: #6c757d;
+}
+.pi-success {
+    background-color: #28a745;
+    color: #28a745;
+}
+.pi-danger {
+    background-color: #dc3545;
+    color: #dc3545;
+}
+.pi-warning {
+    background-color: #ffc107;
+    color: #ffc107;
+}
+.pi-info {
+    background-color: #17a2b8;
+    color: #17a2b8;
+}
+.pi-light {
+    background-color: #f8f9fa;
+    color: #f8f9fa;
+}
+.pi-dark {
+    background-color: #343a40;
+    color: #343a40;
 }

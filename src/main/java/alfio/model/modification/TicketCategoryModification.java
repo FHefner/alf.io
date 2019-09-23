@@ -16,16 +16,13 @@
  */
 package alfio.model.modification;
 
-import alfio.model.TicketCategory;
-import alfio.util.MonetaryUtil;
+import alfio.model.TicketCategory.TicketCheckInStrategy;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 
 import java.math.BigDecimal;
-import java.time.ZoneId;
 import java.util.Map;
-import java.util.Optional;
 
 @Getter
 public class TicketCategoryModification {
@@ -47,6 +44,9 @@ public class TicketCategoryModification {
 
     private final DateTimeModification ticketValidityStart;
     private final DateTimeModification ticketValidityEnd;
+    private final int ordinal;
+    private final TicketCheckInStrategy ticketCheckInStrategy;
+    private final String badgeColor;
 
     @JsonCreator
     public TicketCategoryModification(@JsonProperty("id") Integer id,
@@ -63,7 +63,10 @@ public class TicketCategoryModification {
                                       @JsonProperty("validCheckInFrom") DateTimeModification validCheckInFrom,
                                       @JsonProperty("validCheckInTo") DateTimeModification validCheckInTo,
                                       @JsonProperty("ticketValidityStart") DateTimeModification ticketValidityStart,
-                                      @JsonProperty("ticketValidityEnd") DateTimeModification ticketValidityEnd) {
+                                      @JsonProperty("ticketValidityEnd") DateTimeModification ticketValidityEnd,
+                                      @JsonProperty("ordinal") Integer ordinal,
+                                      @JsonProperty("ticketCheckInStrategy") TicketCheckInStrategy ticketCheckInStrategy,
+                                      @JsonProperty("badgeColor") String badgeColor) {
         this.id = id;
         this.name = name;
         this.maxTickets = maxTickets;
@@ -79,24 +82,9 @@ public class TicketCategoryModification {
         this.validCheckInTo = validCheckInTo;
         this.ticketValidityStart = ticketValidityStart;
         this.ticketValidityEnd = ticketValidityEnd;
+        this.ordinal = ordinal != null ? ordinal : 0;
+        this.ticketCheckInStrategy = ticketCheckInStrategy;
+        this.badgeColor = badgeColor;
     }
 
-    public int getPriceInCents() {
-        return Optional.ofNullable(price).map(MonetaryUtil::unitToCents).orElse(0);
-    }
-
-    public static TicketCategoryModification fromTicketCategory(TicketCategory tc, Map<String, String> ticketCategoryDescriptions, ZoneId zoneId) {
-        return new TicketCategoryModification(tc.getId(),
-                tc.getName(),
-                tc.getMaxTickets(),
-                DateTimeModification.fromZonedDateTime(tc.getInception(zoneId)),
-                DateTimeModification.fromZonedDateTime(tc.getExpiration(zoneId)),
-                ticketCategoryDescriptions,
-                tc.getPrice(),
-                tc.isAccessRestricted(), "", tc.isBounded(), tc.getCode(),
-                DateTimeModification.fromZonedDateTime(tc.getValidCheckInFrom(zoneId)),
-                DateTimeModification.fromZonedDateTime(tc.getValidCheckInTo(zoneId)),
-                DateTimeModification.fromZonedDateTime(tc.getTicketValidityStart()),
-                DateTimeModification.fromZonedDateTime(tc.getTicketValidityEnd()));
-    }
 }

@@ -16,67 +16,70 @@
  */
 package alfio.model.modification.support;
 
+import alfio.manager.system.ConfigurationManager;
+import alfio.model.system.ConfigurationKeyValuePathLevel;
 import alfio.model.system.ConfigurationKeys;
-import com.insightfullogic.lambdabehave.JunitSuiteRunner;
 import org.apache.commons.lang3.tuple.Pair;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 
 import java.util.*;
 import java.util.function.Function;
 
-import static com.insightfullogic.lambdabehave.Suite.describe;
+import static org.junit.Assert.assertEquals;
 
-@RunWith(JunitSuiteRunner.class)
-public class LocationDescriptorTest {{
+public class LocationDescriptorTest {
 
-    final String latitude = "latitude";
-    final String longitude = "longitude";
-    final TimeZone timeZone = TimeZone.getDefault();
-
-    Function<String, LocationDescriptor> locationDescriptorBuilder = (mapUrl) -> new LocationDescriptor(timeZone.getID(), latitude, longitude, mapUrl);
+    private final String latitude = "latitude";
+    private final String longitude = "longitude";
+    private final TimeZone timeZone = TimeZone.getDefault();
+    private Function<String, LocationDescriptor> locationDescriptorBuilder = (mapUrl) -> new LocationDescriptor(timeZone.getID(), latitude, longitude, mapUrl);
 
 
+    private static ConfigurationManager.MaybeConfiguration buildMaybeConf(ConfigurationKeys k, String val) {
+        return new ConfigurationManager.MaybeConfiguration(k, new ConfigurationKeyValuePathLevel(k.name(), val, null));
+    }
 
-    describe("LocationDescriptorGoogle", it -> {
-        Map<ConfigurationKeys, Optional<String>> geoInfo = Collections.singletonMap(ConfigurationKeys.MAPS_CLIENT_API_KEY, Optional.of("mapKey"));
+    @Test
+    public void testLocationDescriptorGoogle() {
+        var geoInfo = Map.of(ConfigurationKeys.MAPS_CLIENT_API_KEY, buildMaybeConf(ConfigurationKeys.MAPS_CLIENT_API_KEY, "mapKey"));
         final LocationDescriptor expected = locationDescriptorBuilder.apply("https://maps.googleapis.com/maps/api/staticmap?center=latitude,longitude&key=mapKey&zoom=16&size=400x400&markers=color:blue%7Clabel:E%7Clatitude,longitude");
-        it.should("build the locationDescriptor", expect -> expect.that(LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo)).isEqualTo(expected));
-    });
+        assertEquals(expected, LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo));
+    }
 
-    describe("LocationDescriptorNone", it -> {
-        Map<ConfigurationKeys, Optional<String>> geoInfo = Collections.emptyMap();
-        final LocationDescriptor expected = locationDescriptorBuilder.apply("https://tyler-demo.herokuapp.com/?center=latitude,longitude&zoom=16&size=400x400&markers=color:blue%7Clabel:E%7Clatitude,longitude");
-        it.should("build the locationDescriptor", expect -> expect.that(LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo)).isEqualTo(expected));
-    });
+    @Test
+    public void testLocationDescriptorNone() {
+        Map<ConfigurationKeys, ConfigurationManager.MaybeConfiguration> geoInfo = Collections.emptyMap();
+        final LocationDescriptor expected = locationDescriptorBuilder.apply("");
+        assertEquals(expected, LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo));
+    }
 
-    describe("LocationDescriptorGoogleWithTypeSet", it -> {
-        Map<ConfigurationKeys, Optional<String>> geoInfo = new HashMap<>();
-
-        geoInfo.put(ConfigurationKeys.MAPS_PROVIDER, Optional.of(ConfigurationKeys.GeoInfoProvider.GOOGLE.name()));
-        geoInfo.put(ConfigurationKeys.MAPS_CLIENT_API_KEY, Optional.of("mapKey"));
+    @Test
+    public void testLocationDescriptorGoogleWithTypeSet() {
+        var geoInfo = Map.of(
+            ConfigurationKeys.MAPS_PROVIDER, buildMaybeConf(ConfigurationKeys.MAPS_PROVIDER, ConfigurationKeys.GeoInfoProvider.GOOGLE.name()),
+            ConfigurationKeys.MAPS_CLIENT_API_KEY, buildMaybeConf(ConfigurationKeys.MAPS_CLIENT_API_KEY, "mapKey"));
 
         final LocationDescriptor expected = locationDescriptorBuilder.apply("https://maps.googleapis.com/maps/api/staticmap?center=latitude,longitude&key=mapKey&zoom=16&size=400x400&markers=color:blue%7Clabel:E%7Clatitude,longitude");
-        it.should("build the locationDescriptor", expect -> expect.that(LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo)).isEqualTo(expected));
-    });
+        assertEquals(expected, LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo));
+    }
 
-    describe("LocationDescriptorHEREWithTypeSet", it -> {
-        Map<ConfigurationKeys, Optional<String>> geoInfo = new HashMap<>();
-
-        geoInfo.put(ConfigurationKeys.MAPS_PROVIDER, Optional.of(ConfigurationKeys.GeoInfoProvider.HERE.name()));
-        geoInfo.put(ConfigurationKeys.MAPS_HERE_APP_ID, Optional.of("appId"));
-        geoInfo.put(ConfigurationKeys.MAPS_HERE_APP_CODE, Optional.of("appCode"));
+    @Test
+    public void testLocationDescriptorHEREWithTypeSet() {
+        var geoInfo = Map.of(
+            ConfigurationKeys.MAPS_PROVIDER, buildMaybeConf(ConfigurationKeys.MAPS_PROVIDER, ConfigurationKeys.GeoInfoProvider.HERE.name()),
+            ConfigurationKeys.MAPS_HERE_APP_ID, buildMaybeConf(ConfigurationKeys.MAPS_HERE_APP_ID, "appId"),
+            ConfigurationKeys.MAPS_HERE_APP_CODE, buildMaybeConf(ConfigurationKeys.MAPS_HERE_APP_CODE, "appCode")
+        );
 
         final LocationDescriptor expected = locationDescriptorBuilder.apply("https://image.maps.api.here.com/mia/1.6/mapview?c=latitude,longitude&z=16&w=400&h=400&poi=latitude,longitude&app_id=appId&app_code=appCode");
-        it.should("build the locationDescriptor", expect -> expect.that(LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo)).isEqualTo(expected));
-    });
+        assertEquals(expected, LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo));
+    }
 
-    describe("LocationDescriptorNONEWithTypeSet", it -> {
-        Map<ConfigurationKeys, Optional<String>> geoInfo = new HashMap<>();
+    @Test
+    public void testLocationDescriptorNONEWithTypeSet() {
+        var geoInfo = Map.of(ConfigurationKeys.MAPS_PROVIDER, buildMaybeConf(ConfigurationKeys.MAPS_PROVIDER, ConfigurationKeys.GeoInfoProvider.NONE.name()));
+        final LocationDescriptor expected = locationDescriptorBuilder.apply("");
+        assertEquals(expected, LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo));
+    }
 
-        geoInfo.put(ConfigurationKeys.MAPS_PROVIDER, Optional.of(ConfigurationKeys.GeoInfoProvider.NONE.name()));
-
-
-        final LocationDescriptor expected = locationDescriptorBuilder.apply("https://tyler-demo.herokuapp.com/?center=latitude,longitude&zoom=16&size=400x400&markers=color:blue%7Clabel:E%7Clatitude,longitude");
-        it.should("build the locationDescriptor", expect -> expect.that(LocationDescriptor.fromGeoData(Pair.of(latitude, longitude), timeZone, geoInfo)).isEqualTo(expected));
-    });
-}}
+}

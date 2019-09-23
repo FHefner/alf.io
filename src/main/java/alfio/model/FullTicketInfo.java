@@ -16,6 +16,7 @@
  */
 package alfio.model;
 
+import alfio.model.support.JSONData;
 import alfio.model.transaction.PaymentProxy;
 import ch.digitalfondue.npjt.ConstructorAnnotationRowMapper.Column;
 import lombok.Getter;
@@ -26,12 +27,14 @@ import java.time.ZonedDateTime;
 import java.util.Date;
 
 @Getter
-public class FullTicketInfo {
+public class FullTicketInfo implements TicketInfoContainer {
 
     @Delegate
     private final Ticket ticket;
 
     private final TicketReservation ticketReservation;
+
+    private final BillingDetails billingDetails;
 
     private final TicketCategory ticketCategory;
 
@@ -54,6 +57,7 @@ public class FullTicketInfo {
                           @Column("t_locked_assignment") boolean lockedAssignment,
                           @Column("t_user_language") String userLanguage,
                           @Column("t_ext_reference") String extReference,
+                          @Column("t_currency_code") String currencyCode,
                           //
                           @Column("tr_id") String trId,
                           @Column("tr_validity") Date trValidity,
@@ -79,7 +83,22 @@ public class FullTicketInfo {
                           @Column("tr_invoice_requested") boolean invoiceRequested,
                           @Column("tr_used_vat_percent") BigDecimal usedVatPercent,
                           @Column("tr_vat_included") Boolean vatIncluded,
+                          @Column("tr_creation_ts") ZonedDateTime reservationCreationTimestamp,
+                          @Column("tr_customer_reference") String customerReference,
+                          @Column("tr_registration_ts") ZonedDateTime reservationRegistrationTimestamp,
                           //
+                          @Column("tr_billing_address_company") String billingAddressCompany,
+                          @Column("tr_billing_address_line1") String billingAddressLine1,
+                          @Column("tr_billing_address_line2") String billingAddressLine2,
+                          @Column("tr_billing_address_city") String billingAddressCity,
+                          @Column("tr_billing_address_zip") String billingAddressZip,
+                          @Column("tr_invoicing_additional_information") @JSONData TicketReservationInvoicingAdditionalInfo invoicingAdditionalInfo,
+
+                          @Column("tr_src_price_cts") int reservationSrcPriceCts,
+                          @Column("tr_final_price_cts") int reservationFinalPriceCts,
+                          @Column("tr_vat_cts") int reservationVatCts,
+                          @Column("tr_discount_cts") int reservationDiscountCts,
+                          @Column("tr_currency_code") String reservationCurrencyCode,
                           //
                           @Column("tc_id") int tcId,
                           @Column("tc_inception") ZonedDateTime tcUtcInception,
@@ -95,17 +114,22 @@ public class FullTicketInfo {
                           @Column("tc_valid_checkin_from") ZonedDateTime validCheckInFrom,
                           @Column("tc_valid_checkin_to") ZonedDateTime validCheckInTo,
                           @Column("tc_ticket_validity_start") ZonedDateTime ticketValidityStart,
-                          @Column("tc_ticket_validity_end") ZonedDateTime ticketValidityEnd
+                          @Column("tc_ticket_validity_end") ZonedDateTime ticketValidityEnd,
+                          @Column("tc_ordinal") int ordinal,
+                          @Column("tc_ticket_checkin_strategy") TicketCategory.TicketCheckInStrategy ticketCheckInStrategy
                           ) {
 
         this.ticket = new Ticket(id, uuid, creation, categoryId, status, eventId, ticketsReservationId, fullName, firstName, lastName, email,
-            lockedAssignment, userLanguage, ticketSrcPriceCts, ticketFinalPriceCts, ticketVatCts, ticketDiscountCts, extReference);
+            lockedAssignment, userLanguage, ticketSrcPriceCts, ticketFinalPriceCts, ticketVatCts, ticketDiscountCts, extReference, currencyCode);
         this.ticketReservation = new TicketReservation(trId, trValidity, trStatus, trFullName, trFirstName, trLastName, trEmail, trBillingAddress,
                 trConfirmationTimestamp, trLatestReminder, trPaymentMethod, trReminderSent, trPromoCodeDiscountId, trAutomatic, resUserLanguage,
-            directAssignment, invoiceNumber, invoiceModel, reservationVatStatus, vatNr, vatCountry, invoiceRequested, usedVatPercent, vatIncluded);
+            directAssignment, invoiceNumber, invoiceModel, reservationVatStatus, vatNr, vatCountry, invoiceRequested, usedVatPercent, vatIncluded, reservationCreationTimestamp, customerReference,
+            reservationRegistrationTimestamp, reservationSrcPriceCts, reservationFinalPriceCts, reservationVatCts, reservationDiscountCts, reservationCurrencyCode);
         this.ticketCategory = new TicketCategory(tcId, tcUtcInception, tcUtcExpiration, tcMaxTickets, tcName,
                 tcAccessRestricted, tcStatus, tcEventId, bounded, tcSrcPriceCts, code, validCheckInFrom, validCheckInTo,
-                ticketValidityStart, ticketValidityEnd);
+                ticketValidityStart, ticketValidityEnd, currencyCode, ordinal, ticketCheckInStrategy);
+
+        this.billingDetails = new BillingDetails(billingAddressCompany, billingAddressLine1, billingAddressLine2, billingAddressZip, billingAddressCity, vatCountry, vatNr, invoicingAdditionalInfo);
 
     }
 }

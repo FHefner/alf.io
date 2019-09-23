@@ -31,7 +31,7 @@ import java.util.Optional;
 import java.util.Set;
 
 @Getter
-public class Ticket {
+public class Ticket implements TicketInfoContainer {
 
     public enum TicketStatus {
         FREE, PENDING, TO_BE_PAID, ACQUIRED, CANCELLED, CHECKED_IN, EXPIRED, INVALIDATED, RELEASED, PRE_RESERVED
@@ -58,6 +58,7 @@ public class Ticket {
     private final int vatCts;
     private final int discountCts;
     private final String extReference;
+    private final String currencyCode;
 
     public Ticket(@JsonProperty("id") @Column("id") int id,
                   @JsonProperty("uuid") @Column("uuid") String uuid,
@@ -76,7 +77,8 @@ public class Ticket {
                   @JsonProperty("finalPriceCts") @Column("final_price_cts") int finalPriceCts,
                   @JsonProperty("vatCts") @Column("vat_cts") int vatCts,
                   @JsonProperty("discountCts") @Column("discount_cts") int discountCts,
-                  @JsonProperty("extReference") @Column("ext_reference") String extReference) {
+                  @JsonProperty("extReference") @Column("ext_reference") String extReference,
+                  @JsonProperty("currencyCode") @Column("currency_code") String currencyCode) {
         this.id = id;
         this.uuid = uuid;
         this.creation = creation;
@@ -96,8 +98,10 @@ public class Ticket {
         this.vatCts = vatCts;
         this.discountCts = discountCts;
         this.extReference = extReference;
+        this.currencyCode = currencyCode;
     }
     
+    @Override
     public boolean getAssigned() {
         return (StringUtils.isNotBlank(fullName) || (StringUtils.isNotBlank(firstName) && StringUtils.isNotBlank(lastName))) && StringUtils.isNotBlank(email);
     }
@@ -126,11 +130,12 @@ public class Ticket {
         return SOLD_STATUSES.contains(status);
     }
 
+    @Override
     public boolean isCheckedIn() {
         return status == TicketStatus.CHECKED_IN;
     }
 
-    private static String hmacSHA256Base64(String key, String code) {
+    public static String hmacSHA256Base64(String key, String code) {
         return Base64.getEncoder().encodeToString(new HmacUtils(HmacAlgorithms.HMAC_SHA_256, key).hmac(code));
     }
 
@@ -139,6 +144,10 @@ public class Ticket {
     }
 
     public String getFormattedFinalPrice() {
-        return MonetaryUtil.formatCents(finalPriceCts);
+        return MonetaryUtil.formatCents(finalPriceCts, currencyCode);
+    }
+
+    public String getFormattedNetPrice() {
+        return MonetaryUtil.formatCents(finalPriceCts - vatCts, currencyCode);
     }
 }

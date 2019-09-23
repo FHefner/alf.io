@@ -17,7 +17,8 @@
 
 package alfio.extension;
 
-import alfio.model.Event;
+import alfio.manager.ExtensionManager;
+import alfio.model.EventAndOrganizationId;
 import alfio.model.ExtensionLog;
 import alfio.model.ExtensionSupport;
 import alfio.model.ExtensionSupport.*;
@@ -54,6 +55,9 @@ public class ExtensionService {
 
     private final PlatformTransactionManager platformTransactionManager;
 
+    private static final String PRELOAD_SCRIPT = "\nvar HashMap = Java.type('java.util.HashMap');\n" +
+        "var ExtensionUtils = Java.type('alfio.extension.ExtensionUtils');\n";
+
 
     @AllArgsConstructor
     private static final class ExtensionLoggerImpl implements ExtensionLogger {
@@ -66,22 +70,22 @@ public class ExtensionService {
 
         @Override
         public void logWarning(String msg) {
-            executeInNewTransaction((s) -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.WARNING));
+            executeInNewTransaction(s -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.WARNING));
         }
 
         @Override
         public void logSuccess(String msg) {
-            executeInNewTransaction((s) -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.SUCCESS));
+            executeInNewTransaction(s -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.SUCCESS));
         }
 
         @Override
         public void logError(String msg) {
-            executeInNewTransaction((s) -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.ERROR));
+            executeInNewTransaction(s -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.ERROR));
         }
 
         @Override
         public void logInfo(String msg) {
-            executeInNewTransaction((s) -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.INFO));
+            executeInNewTransaction(s -> extensionLogRepository.insert(effectivePath, path, name, msg, ExtensionLog.Type.INFO));
         }
 
         private void executeInNewTransaction(TransactionCallback<Integer> t) {
@@ -98,7 +102,7 @@ public class ExtensionService {
     private static ExtensionMetadata getMetadata(String name, String script) {
         return ScriptingExecutionService.executeScript(
             name,
-            script + "\n;GSON.fromJson(JSON.stringify(getScriptMetadata()), returnClass);", //<- ugly hack, but the interop java<->js is simpler that way...
+            PRELOAD_SCRIPT + script + "\n;GSON.fromJson(JSON.stringify(getScriptMetadata()), returnClass);", //<- ugly hack, but the interop java<->js is simpler that way...
             Collections.emptyMap(),
             ExtensionMetadata.class, new NoopExtensionLogger());
     }
@@ -112,7 +116,9 @@ public class ExtensionService {
 
         Validate.notBlank(extensionMetadata.displayName, "Display Name is mandatory");
 
-        extensionRepository.deleteEventsForPath(previousPath, previousName);
+        if(previousPath != null && previousName != null) {
+            extensionRepository.deleteEventsForPath(previousPath, previousName);
+        }
 
         if (!Objects.equals(previousPath, script.getPath()) || !Objects.equals(previousName, script.getName())) {
             extensionRepository.deleteScriptForPath(previousPath, previousName);
@@ -162,7 +168,7 @@ public class ExtensionService {
     }
 
     @Transactional
-    public void bulkUpdateEventSettings(Organization org, Event event, List<ExtensionMetadataValue> toUpdate) {
+    public void bulkUpdateEventSettings(Organization org, EventAndOrganizationId event, List<ExtensionMetadataValue> toUpdate) {
         String path = "-" + org.getId() + "-" + event.getId();
         deleteAndInsertSetting("EVENT", path, toUpdate);
     }
@@ -204,11 +210,18 @@ public class ExtensionService {
         return extensionRepository.getSingle(path, name);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<ExtensionSupport> getSingle(Organization organization, EventAndOrganizationId event, String name) {
+        Set<String> paths = generatePossiblePath(ExtensionManager.toPath(organization.getId(), event.getId()), Comparator.reverseOrder());
+        return extensionRepository.getSingle(paths, name);
+    }
+
     public <T> T executeScriptsForEvent(String event, String basePath, Map<String, Object> payload, Class<T> clazz) {
         List<ScriptPathNameHash> activePaths = getActiveScriptsForEvent(event, basePath, false);
         T res = null;
         Map<String, Object> input = new HashMap<>(payload);
         input.put("extensionEvent", event);
+        input.put("output", null);
         for (ScriptPathNameHash activePath : activePaths) {
             String path = activePath.getPath();
             String name = activePath.getName();
@@ -218,7 +231,7 @@ public class ExtensionService {
 
             if(params.getLeft().isEmpty()) {
                 res = scriptingExecutionService.executeScript(name, activePath.getHash(),
-                    () -> getScript(path, name)+"\n;GSON.fromJson(JSON.stringify(executeScript(extensionEvent)), returnClass);", input, clazz, extLogger);
+                    () -> PRELOAD_SCRIPT + getScript(path, name)+"\n;GSON.fromJson(JSON.stringify(executeScript(extensionEvent)), returnClass);", input, clazz, extLogger);
                 input.put("output", res);
             } else {
                 extLogger.logInfo("script not run, missing parameters: " + params.getLeft());
@@ -239,7 +252,7 @@ public class ExtensionService {
             ExtensionLogger extLogger = new ExtensionLoggerImpl(extensionLogRepository, platformTransactionManager, basePath, path, name);
 
             if(params.getLeft().isEmpty()) {
-                scriptingExecutionService.executeScriptAsync(path, name, activePath.getHash(), () -> getScript(path, name)+"\n;executeScript(extensionEvent);", input, extLogger);
+                scriptingExecutionService.executeScriptAsync(path, name, activePath.getHash(), () -> PRELOAD_SCRIPT + getScript(path, name)+"\n;executeScript(extensionEvent);", input, extLogger);
             } else {
                 extLogger.logInfo("script not run, missing parameters: " + params.getLeft());
             }
@@ -276,11 +289,11 @@ public class ExtensionService {
         return extensionRepository.findActive(paths, async, event);
     }
 
-    private static Set<String> generatePossiblePath(String basePath) {
+    private static Set<String> generatePossiblePath(String basePath, Comparator<String> comparator) {
         //generate all the paths
         // given "-0-0" it will generate
         // "-", "-0", "-0-0"
-        Set<String> paths = new TreeSet<>();
+        Set<String> paths = new TreeSet<>(comparator);
         int basePathLength = basePath.length();
         for (int i = 1; i < basePathLength; i++) {
             if (basePath.charAt(i) == '-') {
@@ -292,6 +305,10 @@ public class ExtensionService {
         return paths;
     }
 
+    private static Set<String> generatePossiblePath(String basePath) {
+        return generatePossiblePath(basePath, Comparator.naturalOrder());
+    }
+
     @Transactional(readOnly = true)
     public List<ExtensionSupport> listAll() {
         return extensionRepository.listAll();
@@ -300,8 +317,9 @@ public class ExtensionService {
 
     @Transactional(readOnly = true)
     public Pair<List<ExtensionLog>, Integer> getLog(String path, String name, ExtensionLog.Type type, int pageSize, int offset) {
-        int count = extensionLogRepository.countPages(path, name, type);
-        List<ExtensionLog> logs = extensionLogRepository.getPage(path, name, type, pageSize, offset);
+        String typeAsString = type != null ? type.name() : null;
+        int count = extensionLogRepository.countPages(path, name, typeAsString);
+        List<ExtensionLog> logs = extensionLogRepository.getPage(path, name, typeAsString, pageSize, offset);
         return Pair.of(logs, count);
     }
 }

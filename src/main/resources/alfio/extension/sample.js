@@ -18,6 +18,7 @@ function getScriptMetadata() {
             //'WAITING_QUEUE_SUBSCRIPTION', //fired on waiting queue subscription. No results expected.
             //'EVENT_CREATED', //fired when an event has been created. Return boolean for synchronous variant, no results expected for the asynchronous one.
             //'EVENT_STATUS_CHANGE', //fired when an event status has changed (normally, from DRAFT to PUBLIC). Return boolean for synchronous variant, no results expected for the asynchronous one.
+            //'RESERVATION_VALIDATION', //fired on reservation validation.
             'INVOICE_GENERATION' //fired on invoice generation. Returns the invoice model.
         ]
         //,
@@ -35,7 +36,7 @@ function executeScript(scriptEvent) {
     log.warn('hello from script with event: ' + scriptEvent);
     log.warn('extension parameters are: ' + extensionParameters);
     //this sample calls the https://csrng.net/ website and generates a random invoice number
-    var randomNumber = restTemplate.getForObject('https://csrng.net/csrng/csrng.php?min=0&max=100', Java.type('java.util.ArrayList').class)[0].random;
+    var randomNumber = simpleHttpClient.get('https://csrng.net/csrng/csrng.php?min=0&max=100').getJsonBody()[0].random;
     log.warn('the invoice number will be: ' + randomNumber);
     return {
         invoiceNumber: randomNumber
