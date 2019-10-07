@@ -360,8 +360,14 @@ public class PayPalManager implements PaymentProvider, RefundRequest, PaymentInf
                 .map(String::valueOf)
                 .orElse("0");
             Pair<Long, Long> fees = getInfo(paymentId, captureId, spec.getEvent(), feeSupplier).map(i -> {
-                Long platformFee = Optional.ofNullable(i.getPlatformFee()).map(Long::parseLong).orElse(0L);
-                Long gatewayFee = Optional.ofNullable(i.getFee()).map(Long::parseLong).orElse(0L);
+                if (!i.getPlatformFee().isEmpty()) {
+                    log.info(String.format("Platform Fee: %s", i.getPlatformFee()));
+                }
+                if (!i.getFee().isEmpty()) {
+                    log.info(String.format("Fee: %s", i.getFee()));
+                }
+                Long platformFee = Optional.ofNullable(i.getPlatformFee().replace(",", ".")).map(Long::parseLong).orElse(0L);
+                Long gatewayFee = Optional.ofNullable(i.getFee().replace(",", ".")).map(Long::parseLong).orElse(0L);
                 return Pair.of(platformFee, gatewayFee);
             }).orElseGet(() -> Pair.of(0L, 0L));
             PaymentManagerUtils.invalidateExistingTransactions(spec.getReservationId(), transactionRepository);
