@@ -366,8 +366,12 @@ public class PayPalManager implements PaymentProvider, RefundRequest, PaymentInf
                 if (!i.getFee().isEmpty()) {
                     log.info(String.format("Fee: %s", i.getFee()));
                 }
-                Long platformFee = Optional.ofNullable(i.getPlatformFee().replace(",", ".")).map(Long::parseLong).orElse(0L);
-                Long gatewayFee = Optional.ofNullable(i.getFee().replace(",", ".")).map(Long::parseLong).orElse(0L);
+                Long platformFee = Optional.ofNullable(
+                    i.getPlatformFee().replace(",", ".").substring(0, i.getPlatformFee().indexOf('.')))
+                    .map(Long::parseLong).orElse(0L);
+                Long gatewayFee = Optional.ofNullable(
+                    i.getFee().replace(",", ".").substring(0, i.getFee().indexOf('.')))
+                    .map(Long::parseLong).orElse(0L);
                 return Pair.of(platformFee, gatewayFee);
             }).orElseGet(() -> Pair.of(0L, 0L));
             PaymentManagerUtils.invalidateExistingTransactions(spec.getReservationId(), transactionRepository);
